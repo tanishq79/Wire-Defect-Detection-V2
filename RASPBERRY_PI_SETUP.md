@@ -51,7 +51,7 @@ If `pip install tensorflow` fails on Raspberry Pi OS, capture the full error. Te
 
 ```bash
 source .venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 8000
+./run_pi.sh
 ```
 
 Open the dashboard on the Pi:
@@ -101,8 +101,18 @@ If the changes are pushed to the GitHub repo:
 
 ```bash
 cd ~/Desktop/Wire-Defect-Detection-V2
+git fetch origin
+git checkout codex/pi-ui-api-hardening
 git pull
 source .venv/bin/activate
-python -m py_compile app.py
-uvicorn app:app --host 0.0.0.0 --port 8000
+./run_pi.sh
+```
+
+To confirm the exact Git version running on the Pi:
+
+```bash
+cd ~/Desktop/Wire-Defect-Detection-V2
+git branch --show-current
+git log --oneline -1
+git status --short
 ```
