@@ -114,6 +114,12 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 .btn-change { background: rgba(255,255,255,.9); color: var(--text-primary); border: none; border-radius: var(--radius-sm); padding: 6px 12px; font-size: 12px; font-family: var(--font-body); font-weight: 500; cursor: pointer; }
 .btn-change:hover { background: white; }
 
+.source-tools { display: flex; flex-direction: column; gap: 10px; margin: 0 14px 14px; }
+.path-row { display: flex; gap: 8px; }
+.path-input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); background: var(--surface); outline: none; }
+.path-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,86,219,.1); }
+.camera-btn { justify-content: center; width: 100%; }
+
 /* ── Run button ─────────────────────────────────── */
 .btn-run { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: var(--radius); font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: -.2px; cursor: pointer; overflow: hidden; transition: background .15s, transform .1s; box-shadow: 0 4px 14px rgba(26,86,219,.35); flex-shrink: 0; }
 .btn-run:hover { background: var(--accent-dark); transform: translateY(-1px); }

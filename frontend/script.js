@@ -3,7 +3,10 @@
 // ══════════════════════════════════════════════════════════════
 
 // ── Config ──────────────────────────────────────────────────
-let API_BASE = "http://127.0.0.1:8000";
+const DEFAULT_API_BASE = window.location.port === "3000"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : window.location.origin;
+let API_BASE = DEFAULT_API_BASE || "http://127.0.0.1:8000";
 let MIN_CONF = 50;       // threshold from settings slider
 
 // ── Session state ────────────────────────────────────────────
@@ -15,12 +18,34 @@ let loaderInterval = null;
 let sessionStart = Date.now();
 let systemInfo = {};        // filled by /status poll
 let lastResult = null;      // last prediction result for single PDF export
+let activeSourceName = "";
 
 // ── Colour / meta map ────────────────────────────────────────
 const META = {
     ok_wire:       { color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", label: "OK WIRE",       verdict: "PASS",   action: "ACCEPT — No defects detected on wire" },
     defected_wire: { color: "#dc2626", bg: "#fef2f2", border: "#fecaca", label: "DEFECTED WIRE", verdict: "REJECT", action: "REJECT — Wire defect detected" },
 };
+
+document.getElementById("cfg-apiUrl").value = API_BASE;
+
+async function readApiError(res) {
+    try {
+        const data = await res.json();
+        return data.detail || data.message || JSON.stringify(data);
+    } catch {
+        return await res.text();
+    }
+}
+
+if (!window.Chart) {
+    window.Chart = class {
+        constructor(_ctx, config) {
+            this.data = config && config.data ? config.data : { datasets: [{ data: [] }] };
+        }
+        update() {}
+        destroy() {}
+    };
+}
 
 // ══════════════════════════════════════════════════════════════
 //  NAVIGATION
@@ -67,6 +92,7 @@ setInterval(tick, 1000);
 async function pollStatus() {
     try {
         const res  = await fetch(`${API_BASE}/status`, { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         systemInfo = data;
 
@@ -117,9 +143,19 @@ function handleDrop(e) {
 
 function loadFile(file) {
     selectedFile = file;
+    activeSourceName = file.name;
     document.getElementById("previewImage").src = URL.createObjectURL(file);
     document.getElementById("drop-area").style.display   = "none";
     document.getElementById("previewWrap").style.display = "block";
+    document.getElementById("resultPanel").style.display = "none";
+    lastResult = null;
+}
+
+function resetPreviewForRemoteSource(label) {
+    selectedFile = null;
+    activeSourceName = label;
+    document.getElementById("drop-area").style.display = "block";
+    document.getElementById("previewWrap").style.display = "none";
     document.getElementById("resultPanel").style.display = "none";
     lastResult = null;
 }
@@ -162,28 +198,67 @@ async function predict() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    let prediction, confidence;
     try {
         const res  = await fetch(`${API_BASE}/predict`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
-        prediction = data.prediction;
-        // Confidence already in % from backend
-        confidence = parseFloat(parseFloat(data.confidence).toFixed(1));
-    } catch {
+        applyPredictionResult(data, selectedFile.name);
+    } catch (err) {
         stopLoader();
         btn.disabled = false; btn.style.opacity = "1";
-        alert("Could not reach the model API. Is the server running?");
+        alert(`Inspection failed: ${err.message || "Could not reach the model API."}`);
         return;
     }
 
     stopLoader();
     btn.disabled = false; btn.style.opacity = "1";
+}
+
+async function predictStoredPath() {
+    const path = document.getElementById("storedPath").value.trim();
+    if (!path) { alert("Enter an image path stored on the Raspberry Pi first."); return; }
+
+    resetPreviewForRemoteSource(path);
+    startLoader();
+
+    try {
+        const url = `${API_BASE}/predict-path?path=${encodeURIComponent(path)}`;
+        const res = await fetch(url, { method: "POST" });
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        applyPredictionResult(data, path);
+    } catch (err) {
+        alert(`Stored image inspection failed: ${err.message || "API error"}`);
+    } finally {
+        stopLoader();
+    }
+}
+
+async function captureCamera() {
+    resetPreviewForRemoteSource("camera_capture");
+    startLoader();
+
+    try {
+        const res = await fetch(`${API_BASE}/capture`, { method: "POST" });
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        applyPredictionResult(data, data.path || "camera_capture");
+    } catch (err) {
+        alert(`Camera capture failed: ${err.message || "API error"}`);
+    } finally {
+        stopLoader();
+    }
+}
+
+function applyPredictionResult(data, sourceName) {
+    const prediction = data.prediction;
+    const confidence = parseFloat(parseFloat(data.confidence).toFixed(1));
 
     const m          = META[prediction] || META.ok_wire;
     const timeStr    = new Date().toLocaleTimeString("en-GB", { hour12: false });
     const dateStr    = new Date().toLocaleDateString("en-CA");   // YYYY-MM-DD
     const isLowConf  = confidence < MIN_CONF;
-    const fileName   = selectedFile.name;
+    const fileName   = sourceName || activeSourceName || data.filename || data.path || "camera_capture";
 
     // ── Result panel ──────────────────────────────────────────
     const panel = document.getElementById("resultPanel");
@@ -444,6 +519,7 @@ function exportCSV() {
 // ══════════════════════════════════════════════════════════════
 function exportSinglePDF() {
     if (!lastResult) { alert("No inspection result to export yet."); return; }
+    if (!window.jspdf) { alert("PDF export library is not loaded. Check internet connection or export CSV instead."); return; }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
 
@@ -597,6 +673,7 @@ function exportSinglePDF() {
 // ══════════════════════════════════════════════════════════════
 function exportSessionPDF() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
+    if (!window.jspdf) { alert("PDF export library is not loaded. Check internet connection or export CSV instead."); return; }
     const { jsPDF } = window.jspdf;
     const doc    = new jsPDF({ unit: "mm", format: "a4" });
     const pageW  = doc.internal.pageSize.getWidth();
@@ -736,6 +813,7 @@ async function testConnection() {
     dotEl.className    = "dot amber";
     try {
         const res  = await fetch(`${url}/status`, { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         dotEl.className    = "dot green";
         textEl.textContent = `Connected — ${data.model_name} on ${data.device}`;
