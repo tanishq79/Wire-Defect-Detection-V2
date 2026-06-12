@@ -83,7 +83,19 @@
             <div class="work-area">
                 <div class="inspector-col">
                     <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Upload Wire Sample</span><span class="panel-badge">PNG / JPG / BMP</span></div>
+                        <div class="panel-header"><span class="panel-title">Camera Inspection</span><span class="panel-badge" id="cameraStatus">Idle</span></div>
+                        <div class="camera-preview">
+                            <img id="cameraPreview" alt="Camera preview">
+                            <div class="camera-empty" id="cameraEmpty">Camera preview stopped</div>
+                        </div>
+                        <div class="camera-actions">
+                            <button class="btn-outline" onclick="startCameraPreview()">Start Preview</button>
+                            <button class="btn-outline" onclick="stopCameraPreview()">Stop</button>
+                            <button class="btn-select" onclick="captureCamera()">Capture & Inspect</button>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span class="panel-title">Manual Image</span><span class="panel-badge">PNG / JPG / BMP</span></div>
                         <div id="drop-area" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
                             <input type="file" id="fileElem" hidden accept="image/*">
                             <div class="drop-inner">
@@ -102,10 +114,6 @@
                                 <input id="storedPath" class="path-input" placeholder="Stored image path on Raspberry Pi">
                                 <button class="btn-outline" onclick="predictStoredPath()">Inspect</button>
                             </div>
-                            <button class="btn-outline camera-btn" onclick="captureCamera()">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                                Capture From Camera
-                            </button>
                         </div>
                     </div>
 
@@ -136,19 +144,7 @@
 
                 <div class="analytics-col">
                     <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Live Camera</span><span class="panel-badge" id="cameraStatus">Idle</span></div>
-                        <div class="camera-preview">
-                            <img id="cameraPreview" alt="Camera preview">
-                            <div class="camera-empty" id="cameraEmpty">Camera preview stopped</div>
-                        </div>
-                        <div class="camera-actions">
-                            <button class="btn-outline" onclick="startCameraPreview()">Start Preview</button>
-                            <button class="btn-outline" onclick="stopCameraPreview()">Stop</button>
-                            <button class="btn-select" onclick="captureCamera()">Capture & Inspect</button>
-                        </div>
-                    </div>
-                    <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Wire Status Distribution</span></div>
+                        <div class="panel-header"><span class="panel-title">Session Summary</span></div>
                         <div class="chart-wrap"><canvas id="chart"></canvas></div>
                     </div>
                     <div class="panel">
