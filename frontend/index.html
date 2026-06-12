@@ -136,6 +136,18 @@
 
                 <div class="analytics-col">
                     <div class="panel">
+                        <div class="panel-header"><span class="panel-title">Live Camera</span><span class="panel-badge" id="cameraStatus">Idle</span></div>
+                        <div class="camera-preview">
+                            <img id="cameraPreview" alt="Camera preview">
+                            <div class="camera-empty" id="cameraEmpty">Camera preview stopped</div>
+                        </div>
+                        <div class="camera-actions">
+                            <button class="btn-outline" onclick="startCameraPreview()">Start Preview</button>
+                            <button class="btn-outline" onclick="stopCameraPreview()">Stop</button>
+                            <button class="btn-select" onclick="captureCamera()">Capture & Inspect</button>
+                        </div>
+                    </div>
+                    <div class="panel">
                         <div class="panel-header"><span class="panel-title">Wire Status Distribution</span></div>
                         <div class="chart-wrap"><canvas id="chart"></canvas></div>
                     </div>

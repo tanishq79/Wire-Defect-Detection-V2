@@ -66,13 +66,36 @@ From another device on the same network, replace `127.0.0.1` with the Pi IP addr
 
 - Upload an image through the dashboard and click `Run Inspection`.
 - Enter a stored image path in the dashboard and click `Inspect`.
-- Click `Capture From Camera` to capture from the Raspberry Pi camera using `picamera2`.
+- Click `Start Preview` to view the live Raspberry Pi HQ camera feed.
+- Click `Capture & Inspect` to save a full-resolution camera image and run prediction.
 
 By default, relative stored-image paths are resolved under `images/`. Override this before starting the API:
 
 ```bash
 export WIRE_IMAGE_ROOT=/home/pi/wire_images
 uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Camera captures are saved by default to:
+
+```text
+~/Desktop/CapturedImages
+```
+
+Override this before starting the API:
+
+```bash
+export WIRE_CAPTURE_DIR=/home/pi/Desktop/CapturedImages
+./run_pi.sh
+```
+
+Camera endpoints:
+
+```text
+GET  /camera/status
+GET  /camera/stream
+POST /capture
+POST /camera/stop
 ```
 
 ## 5. Saved Inspection Records

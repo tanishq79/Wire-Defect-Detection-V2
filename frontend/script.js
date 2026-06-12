@@ -19,6 +19,7 @@ let sessionStart = Date.now();
 let systemInfo = {};        // filled by /status poll
 let lastResult = null;      // last prediction result for single PDF export
 let activeSourceName = "";
+let cameraPreviewActive = false;
 
 // ── Colour / meta map ────────────────────────────────────────
 const META = {
@@ -111,6 +112,8 @@ async function pollStatus() {
             setDot("dot-gpu", "amber");
             document.getElementById("status-gpu").textContent = "CPU Mode";
         }
+
+        checkCameraStatus();
 
     } catch {
         setDot("dot-model", "red");  document.getElementById("status-model").textContent = "Model Offline";
@@ -242,12 +245,63 @@ async function captureCamera() {
         const res = await fetch(`${API_BASE}/capture`, { method: "POST" });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
+        if (data.path) {
+            activeSourceName = data.path;
+            document.getElementById("storedPath").value = data.path;
+        }
         applyPredictionResult(data, data.path || "camera_capture");
     } catch (err) {
         alert(`Camera capture failed: ${err.message || "API error"}`);
     } finally {
         stopLoader();
     }
+}
+
+async function checkCameraStatus() {
+    const badge = document.getElementById("cameraStatus");
+    if (!badge) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/camera/status`, { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        badge.textContent = data.available ? data.model || "Ready" : "Unavailable";
+        badge.classList.toggle("camera-ready", !!data.available);
+    } catch {
+        badge.textContent = "Unavailable";
+        badge.classList.remove("camera-ready");
+    }
+}
+
+function startCameraPreview() {
+    const preview = document.getElementById("cameraPreview");
+    const empty = document.getElementById("cameraEmpty");
+    const badge = document.getElementById("cameraStatus");
+
+    cameraPreviewActive = true;
+    preview.src = `${API_BASE}/camera/stream?ts=${Date.now()}`;
+    preview.style.display = "block";
+    empty.style.display = "none";
+    badge.textContent = "Live";
+    badge.classList.add("camera-ready");
+}
+
+async function stopCameraPreview() {
+    const preview = document.getElementById("cameraPreview");
+    const empty = document.getElementById("cameraEmpty");
+    const badge = document.getElementById("cameraStatus");
+
+    cameraPreviewActive = false;
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+    empty.style.display = "flex";
+
+    try {
+        await fetch(`${API_BASE}/camera/stop`, { method: "POST" });
+    } catch {}
+
+    badge.textContent = "Stopped";
+    badge.classList.remove("camera-ready");
 }
 
 function applyPredictionResult(data, sourceName) {

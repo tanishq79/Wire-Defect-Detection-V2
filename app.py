@@ -5,12 +5,14 @@ import io
 import json
 import os
 import platform
-import tempfile
+import threading
+import time
 import uuid
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import tensorflow as tf
@@ -41,6 +43,7 @@ IMG_SIZE = 224
 IMAGE_ROOT = Path(os.getenv("WIRE_IMAGE_ROOT", "images")).resolve()
 INSPECTION_DIR = Path(os.getenv("WIRE_INSPECTION_DIR", "inspection_data")).resolve()
 UPLOAD_DIR = INSPECTION_DIR / "uploads"
+CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -131,6 +134,119 @@ def save_upload(contents: bytes, filename: Optional[str]):
     return saved_path
 
 
+class CameraManager:
+    def __init__(self):
+        self.picam2 = None
+        self.lock = threading.Lock()
+        self.preview_size = (768, 432)
+        self.still_size = (4056, 3040)
+
+    def start(self):
+        if self.picam2 is not None:
+            return
+
+        try:
+            from picamera2 import Picamera2
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="picamera2 is not installed. Install it with: sudo apt install -y python3-picamera2",
+            ) from exc
+
+        camera = Picamera2()
+        config = camera.create_preview_configuration(
+            main={"size": self.preview_size, "format": "RGB888"}
+        )
+        camera.configure(config)
+        camera.start()
+        time.sleep(1)
+        self.picam2 = camera
+
+    def stop(self):
+        if self.picam2 is None:
+            return
+
+        with self.lock:
+            self.picam2.stop()
+            self.picam2.close()
+            self.picam2 = None
+
+    def status(self):
+        if self.picam2 is None:
+            try:
+                from picamera2 import Picamera2  # noqa: F401
+                return {
+                    "available": True,
+                    "model": "imx477",
+                    "started": False,
+                    "preview_size": self.preview_size,
+                    "still_size": self.still_size,
+                    "capture_dir": str(CAPTURE_DIR),
+                }
+            except Exception as exc:
+                return {
+                    "available": False,
+                    "started": False,
+                    "error": str(exc),
+                    "capture_dir": str(CAPTURE_DIR),
+                }
+
+        try:
+            properties = self.picam2.camera_properties if self.picam2 else {}
+            return {
+                "available": True,
+                "model": properties.get("Model", "unknown"),
+                "started": True,
+                "preview_size": self.preview_size,
+                "still_size": self.still_size,
+                "capture_dir": str(CAPTURE_DIR),
+            }
+        except Exception as exc:
+            return {
+                "available": False,
+                "started": False,
+                "error": str(exc),
+                "capture_dir": str(CAPTURE_DIR),
+            }
+
+    def get_frame_image(self) -> Image.Image:
+        self.start()
+        with self.lock:
+            frame = self.picam2.capture_array()
+
+        if frame.ndim == 3 and frame.shape[2] == 4:
+            frame = frame[:, :, :3]
+
+        return Image.fromarray(frame).convert("RGB")
+
+    def get_frame_jpeg(self) -> bytes:
+        img = self.get_frame_image()
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=80)
+        return output.getvalue()
+
+    def capture_image(self) -> Path:
+        self.start()
+        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".png"
+        output_path = CAPTURE_DIR / filename
+
+        with self.lock:
+            still_config = self.picam2.create_still_configuration(
+                main={"size": self.still_size, "format": "RGB888"}
+            )
+            image_array = self.picam2.switch_mode_and_capture_array(still_config)
+
+        if image_array.ndim == 3 and image_array.shape[2] == 4:
+            image_array = image_array[:, :, :3]
+
+        Image.fromarray(image_array).convert("RGB").save(output_path)
+        return output_path
+
+
+camera_manager = CameraManager()
+
+
 def resolve_image_path(path_value: str) -> Path:
     if not path_value:
         raise HTTPException(status_code=400, detail="Missing image path")
@@ -150,28 +266,21 @@ def resolve_image_path(path_value: str) -> Path:
 
 
 def capture_from_picamera2() -> Path:
-    try:
-        from picamera2 import Picamera2
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="picamera2 is not installed. Install it on Raspberry Pi OS with: sudo apt install -y python3-picamera2",
-        ) from exc
+    return camera_manager.capture_image()
 
-    output_dir = Path(tempfile.gettempdir()) / "wire_surface_captures"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "latest_capture.jpg"
 
-    camera = Picamera2()
-    try:
-        config = camera.create_still_configuration(main={"size": (1920, 1080)})
-        camera.configure(config)
-        camera.start()
-        camera.capture_file(str(output_path))
-    finally:
-        camera.close()
+def mjpeg_frames():
+    while True:
+        try:
+            frame = camera_manager.get_frame_jpeg()
+        except Exception:
+            break
 
-    return output_path
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+        )
+        time.sleep(0.08)
 
 @app.get("/")
 async def root():
@@ -202,6 +311,7 @@ async def status():
         "gpu_available": bool(tf.config.list_physical_devices("GPU")),
         "image_root": str(IMAGE_ROOT),
         "inspection_dir": str(INSPECTION_DIR),
+        "capture_dir": str(CAPTURE_DIR),
         "ui_available": Path("frontend/index.html").exists(),
     }
 
@@ -242,6 +352,25 @@ async def capture():
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "camera", str(image_path))
     return result
+
+
+@app.get("/camera/status")
+async def camera_status():
+    return camera_manager.status()
+
+
+@app.get("/camera/stream")
+async def camera_stream():
+    return StreamingResponse(
+        mjpeg_frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.post("/camera/stop")
+async def camera_stop():
+    camera_manager.stop()
+    return {"stopped": True}
 
 
 @app.get("/history")
