@@ -275,8 +275,18 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 
 .console-brand { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0; color: #fff; }
 .console-sub { font-size: 11px; color: rgba(255,255,255,.68); font-family: var(--font-mono); }
-.console-status { display: flex; align-items: center; gap: 8px; }
-.status-chip { background: rgba(15,23,42,.72); border: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.84); padding: 6px 9px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; backdrop-filter: blur(10px); }
+.console-clock {
+    background: rgba(15,23,42,.72);
+    border: 1px solid rgba(255,255,255,.18);
+    color: rgba(255,255,255,.9);
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: .4px;
+    backdrop-filter: blur(10px);
+}
 
 .verdict-head {
     position: absolute;
@@ -523,12 +533,12 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     right: 18px;
     bottom: 16px;
     display: grid;
-    grid-template-columns: repeat(4, minmax(84px, 120px)) 1fr;
+    grid-template-columns: repeat(4, minmax(84px, 120px));
     gap: 10px;
     align-items: stretch;
 }
 
-.dock-card, .dock-report {
+.dock-card {
     border: 1px solid rgba(255,255,255,.14);
     border-radius: 8px;
     background: rgba(15,23,42,.64);
@@ -539,7 +549,6 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 
 .dock-card span { display: block; font-size: 10px; color: rgba(255,255,255,.62); font-family: var(--font-mono); text-transform: uppercase; }
 .dock-card strong { display: block; font-family: var(--font-display); font-size: 22px; line-height: 1; margin-top: 4px; }
-.dock-report { justify-self: end; min-width: 140px; cursor: pointer; font-family: var(--font-body); font-weight: 700; }
 
 .operator-drawer {
     position: absolute;
@@ -570,7 +579,6 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     .verdict-head { align-items: flex-start; flex-direction: column; }
     .score-stack { width: 100%; grid-template-columns: repeat(3, 1fr); }
     .bottom-dock { grid-template-columns: repeat(2, 1fr); }
-    .dock-report { justify-self: stretch; }
     .side-rail { right: 12px; gap: 16px; }
     .capture-btn { width: 70px; height: 70px; }
     .capture-btn span { width: 52px; height: 52px; }

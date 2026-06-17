@@ -90,8 +90,9 @@ function switchPage(page) {
 //  CLOCK
 // ══════════════════════════════════════════════════════════════
 function tick() {
-    document.getElementById("clock").textContent =
-        new Date().toLocaleTimeString("en-GB", { hour12: false });
+    const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    setText("clock", time);
+    setText("consoleClock", time);
 }
 tick();
 setInterval(tick, 1000);
@@ -108,11 +109,11 @@ async function pollStatus() {
 
         setDot("dot-model", "green");
         document.getElementById("status-model").textContent = data.model_name + " Active";
-        document.getElementById("consoleModelStatus").textContent = data.model_name;
+        setText("consoleModelStatus", data.model_name);
 
         setDot("dot-api", "green");
         document.getElementById("status-api").textContent = "API Connected";
-        document.getElementById("consoleApiStatus").textContent = "API Online";
+        setText("consoleApiStatus", "API Online");
 
         if (data.gpu_available) {
             const util = data.gpu_utilization != null ? `GPU ${data.gpu_utilization}%` : "GPU Active";
@@ -130,9 +131,14 @@ async function pollStatus() {
         setDot("dot-model", "amber"); document.getElementById("status-model").textContent = "Model Checking";
         setDot("dot-api",   "amber"); document.getElementById("status-api").textContent   = "API Checking";
         setDot("dot-gpu",   "amber"); document.getElementById("status-gpu").textContent   = "CPU Mode";
-        document.getElementById("consoleModelStatus").textContent = "Model Check";
-        document.getElementById("consoleApiStatus").textContent = "API Check";
+        setText("consoleModelStatus", "Model Check");
+        setText("consoleApiStatus", "API Check");
     }
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
 }
 
 function setDot(id, cls) {
@@ -390,8 +396,10 @@ function startCameraPreview() {
     preview.src = `${API_BASE}/camera/stream?${previewParams().toString()}`;
     preview.style.display = "block";
     empty.style.display = "none";
-    badge.textContent = "Live";
-    badge.classList.add("camera-ready");
+    if (badge) {
+        badge.textContent = "Live";
+        badge.classList.add("camera-ready");
+    }
 }
 
 async function stopCameraPreview() {
@@ -409,8 +417,10 @@ async function stopCameraPreview() {
         await fetch(`${API_BASE}/camera/stop`, { method: "POST" });
     } catch {}
 
-    badge.textContent = "Stopped";
-    badge.classList.remove("camera-ready");
+    if (badge) {
+        badge.textContent = "Stopped";
+        badge.classList.remove("camera-ready");
+    }
     setInspectionState("neutral");
 }
 
