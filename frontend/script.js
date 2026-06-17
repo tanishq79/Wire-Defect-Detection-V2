@@ -153,23 +153,47 @@ setInterval(pollStatus, 4000);
 //  FILE HANDLING
 // ══════════════════════════════════════════════════════════════
 document.getElementById("fileElem").addEventListener("change", e => {
-    if (e.target.files[0]) loadFile(e.target.files[0]);
+    if (e.target.files[0]) loadFile(e.target.files[0], true);
+    e.target.value = "";
 });
 
 function handleDrop(e) {
     e.preventDefault();
     document.getElementById("drop-area").classList.remove("drag-over");
     const f = e.dataTransfer.files[0];
-    if (f && f.type.startsWith("image/")) loadFile(f);
+    if (f && f.type.startsWith("image/")) loadFile(f, true);
 }
 
-function loadFile(file) {
+function openGalleryUpload() {
+    document.getElementById("fileElem").click();
+}
+
+function loadFile(file, autoInspect = false) {
     selectedFile = file;
     activeSourceName = file.name;
-    document.getElementById("previewImage").src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    document.getElementById("previewImage").src = objectUrl;
     document.getElementById("previewWrap").style.display = "block";
     document.getElementById("resultPanel").style.display = "none";
+    showUploadedImageInConsole(objectUrl, file.name);
     lastResult = null;
+
+    if (autoInspect) predict();
+}
+
+function showUploadedImageInConsole(objectUrl, fileName) {
+    const preview = document.getElementById("cameraPreview");
+    const empty = document.getElementById("cameraEmpty");
+
+    cameraPreviewActive = false;
+    preview.src = objectUrl;
+    preview.style.display = "block";
+    empty.style.display = "none";
+    applyPreviewFilter();
+    setInspectionState("neutral");
+    setText("verdictLabel", "Uploaded Image");
+    setText("verdictTitle", "Inspecting Image");
+    setText("verdictSubtitle", fileName || "Running inspection on selected image.");
 }
 
 function resetPreviewForRemoteSource(label) {
