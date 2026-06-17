@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.responses import StreamingResponse
@@ -20,7 +20,7 @@ from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter, UnidentifiedImageError
 
 app = FastAPI(title="SurfaceAI Wire Inspection API", version="2.1")
 
@@ -43,6 +43,7 @@ IMG_SIZE = 224
 IMAGE_ROOT = Path(os.getenv("WIRE_IMAGE_ROOT", "images")).resolve()
 INSPECTION_DIR = Path(os.getenv("WIRE_INSPECTION_DIR", "inspection_data")).resolve()
 UPLOAD_DIR = INSPECTION_DIR / "uploads"
+PROCESSED_DIR = INSPECTION_DIR / "processed"
 CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -51,8 +52,86 @@ if Path("frontend").exists():
     app.mount("/ui", StaticFiles(directory="frontend", html=True), name="frontend")
 
 
-def predict_image(img: Image.Image):
-    img = img.convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+def clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, float(value)))
+
+
+def build_processing_settings(
+    brightness: float = 0,
+    contrast: float = 0,
+    sharpness: float = 0,
+    mask_strength: float = 0,
+):
+    return {
+        "brightness": clamp(brightness, -50, 50),
+        "contrast": clamp(contrast, -50, 50),
+        "sharpness": clamp(sharpness, 0, 100),
+        "mask_strength": clamp(mask_strength, 0, 100),
+    }
+
+
+def apply_image_enhancements(img: Image.Image, settings: dict) -> Image.Image:
+    enhanced = img.convert("RGB")
+    brightness = 1 + settings["brightness"] / 100
+    contrast = 1 + settings["contrast"] / 100
+    sharpness = 1 + settings["sharpness"] / 45
+
+    enhanced = ImageEnhance.Brightness(enhanced).enhance(brightness)
+    enhanced = ImageEnhance.Contrast(enhanced).enhance(contrast)
+    enhanced = ImageEnhance.Sharpness(enhanced).enhance(sharpness)
+    return enhanced
+
+
+def build_wire_mask(img: Image.Image) -> Image.Image:
+    gray = img.convert("L")
+    radius = max(9, min(gray.size) // 28)
+    background = gray.filter(ImageFilter.GaussianBlur(radius=radius))
+    diff = ImageChops.difference(gray, background)
+    arr = np.asarray(diff, dtype=np.float32)
+    threshold = max(10, float(arr.mean() + arr.std() * 0.65))
+    mask = diff.point(lambda px: 255 if px >= threshold else 0, mode="L")
+    mask = mask.filter(ImageFilter.MaxFilter(17)).filter(ImageFilter.GaussianBlur(radius=3))
+    return mask
+
+
+def suppress_background(img: Image.Image, mask_strength: float) -> Image.Image:
+    if mask_strength <= 0:
+        return img
+
+    mask = build_wire_mask(img)
+    alpha = mask.point(lambda px: int(px * (mask_strength / 100)), mode="L")
+    background = Image.new("RGB", img.size, (18, 24, 28))
+    muted = Image.blend(img, background, 0.72)
+    return Image.composite(img, muted, alpha)
+
+
+def draw_wire_overlay(img: Image.Image, settings: dict) -> Image.Image:
+    enhanced = apply_image_enhancements(img, settings)
+    mask = build_wire_mask(enhanced)
+    edge = mask.filter(ImageFilter.FIND_EDGES).filter(ImageFilter.MaxFilter(3))
+    edge = edge.point(lambda px: 185 if px > 28 else 0, mode="L")
+    overlay = Image.new("RGB", enhanced.size, (251, 191, 36))
+    return Image.composite(overlay, enhanced, edge)
+
+
+def prepare_image_for_model(img: Image.Image, settings: Optional[dict] = None):
+    settings = settings or build_processing_settings()
+    processed = apply_image_enhancements(img, settings)
+    processed = suppress_background(processed, settings["mask_strength"])
+    return processed, settings
+
+
+def save_processed_image(img: Image.Image, stem: str = "processed") -> Path:
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    safe_stem = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in stem)[:48] or "processed"
+    path = PROCESSED_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_stem}.jpg"
+    img.save(path, format="JPEG", quality=92)
+    return path
+
+
+def predict_image(img: Image.Image, processing: Optional[dict] = None):
+    processed_img, processing_settings = prepare_image_for_model(img, processing)
+    img = processed_img.resize((IMG_SIZE, IMG_SIZE))
 
     img_array = image.img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
@@ -72,6 +151,7 @@ def predict_image(img: Image.Image):
         "prediction": prediction,
         "confidence": round(confidence, 2),
         "raw_score": round(score, 4),
+        "processing": processing_settings,
     }
 
 
@@ -219,8 +299,12 @@ class CameraManager:
 
         return Image.fromarray(frame).convert("RGB")
 
-    def get_frame_jpeg(self) -> bytes:
+    def get_frame_jpeg(self, processing: Optional[dict] = None, wire_overlay: bool = True) -> bytes:
         img = self.get_frame_image()
+        if processing:
+            img = apply_image_enhancements(img, processing)
+        if wire_overlay:
+            img = draw_wire_overlay(img, processing or build_processing_settings())
         output = io.BytesIO()
         img.save(output, format="JPEG", quality=80)
         return output.getvalue()
@@ -269,10 +353,10 @@ def capture_from_picamera2() -> Path:
     return camera_manager.capture_image()
 
 
-def mjpeg_frames():
+def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = True):
     while True:
         try:
-            frame = camera_manager.get_frame_jpeg()
+            frame = camera_manager.get_frame_jpeg(processing, wire_overlay)
         except Exception:
             break
 
@@ -316,7 +400,13 @@ async def status():
     }
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
+async def predict(
+    file: UploadFile = File(...),
+    brightness: float = Form(0),
+    contrast: float = Form(0),
+    sharpness: float = Form(0),
+    mask_strength: float = Form(0),
+):
 
     contents = await file.read()
     if not contents:
@@ -324,7 +414,11 @@ async def predict(file: UploadFile = File(...)):
 
     img = open_image_from_bytes(contents)
     saved_path = save_upload(contents, file.filename)
-    result = predict_image(img)
+    processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
+    result = predict_image(img, processing)
+    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
+        processed_img, _ = prepare_image_for_model(img, processing)
+        result["processed_path"] = str(save_processed_image(processed_img, Path(file.filename or "upload").stem))
     result["source"] = "upload"
     result["filename"] = file.filename
     result["saved_path"] = str(saved_path)
@@ -333,10 +427,20 @@ async def predict(file: UploadFile = File(...)):
 
 
 @app.post("/predict-path")
-async def predict_path(path: str):
+async def predict_path(
+    path: str,
+    brightness: float = 0,
+    contrast: float = 0,
+    sharpness: float = 0,
+    mask_strength: float = 0,
+):
     image_path = resolve_image_path(path)
     img = open_image_from_path(image_path)
-    result = predict_image(img)
+    processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
+    result = predict_image(img, processing)
+    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
+        processed_img, _ = prepare_image_for_model(img, processing)
+        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
     result["source"] = "path"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "path", str(image_path))
@@ -344,10 +448,19 @@ async def predict_path(path: str):
 
 
 @app.post("/capture")
-async def capture():
+async def capture(
+    brightness: float = 0,
+    contrast: float = 0,
+    sharpness: float = 0,
+    mask_strength: float = 0,
+):
     image_path = capture_from_picamera2()
     img = open_image_from_path(image_path)
-    result = predict_image(img)
+    processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
+    result = predict_image(img, processing)
+    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
+        processed_img, _ = prepare_image_for_model(img, processing)
+        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
     result["source"] = "camera"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "camera", str(image_path))
@@ -360,9 +473,15 @@ async def camera_status():
 
 
 @app.get("/camera/stream")
-async def camera_stream():
+async def camera_stream(
+    brightness: float = 0,
+    contrast: float = 0,
+    sharpness: float = 0,
+    wire_overlay: bool = True,
+):
+    processing = build_processing_settings(brightness, contrast, sharpness, 0)
     return StreamingResponse(
-        mjpeg_frames(),
+        mjpeg_frames(processing, wire_overlay),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

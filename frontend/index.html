@@ -105,11 +105,38 @@
                     <div class="focus-frame"></div>
                 </div>
 
+                <div class="tuning-panel">
+                    <div class="tuning-head">
+                        <span>Image tuning</span>
+                        <button type="button" onclick="resetTuning()">Reset</button>
+                    </div>
+                    <label class="tuning-row">
+                        <span>Brightness <strong id="valBrightness">0</strong></span>
+                        <input id="ctlBrightness" type="range" min="-50" max="50" value="0">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Contrast <strong id="valContrast">0</strong></span>
+                        <input id="ctlContrast" type="range" min="-50" max="50" value="0">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Sharpness <strong id="valSharpness">0</strong></span>
+                        <input id="ctlSharpness" type="range" min="0" max="100" value="0">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Wire mask <strong id="valMask">0</strong></span>
+                        <input id="ctlMask" type="range" min="0" max="100" value="0">
+                    </label>
+                    <label class="overlay-toggle">
+                        <input id="ctlOverlay" type="checkbox" checked>
+                        <span>Show wire outline</span>
+                    </label>
+                </div>
+
                 <div class="side-rail">
                     <button class="rail-btn" onclick="switchPage('reports')" title="Reports">
                         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     </button>
-                    <button class="capture-btn" onclick="captureCamera()" title="Capture">
+                    <button class="capture-btn" id="captureBtn" onclick="captureCamera()" title="Capture">
                         <span></span>
                     </button>
                     <button class="rail-btn" onclick="startCameraPreview()" title="Restart Preview">

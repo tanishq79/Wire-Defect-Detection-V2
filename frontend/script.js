@@ -20,6 +20,14 @@ let systemInfo = {};        // filled by /status poll
 let lastResult = null;      // last prediction result for single PDF export
 let activeSourceName = "";
 let cameraPreviewActive = false;
+let previewRestartTimer = null;
+let tuningState = {
+    brightness: 0,
+    contrast: 0,
+    sharpness: 0,
+    mask_strength: 0,
+    wire_overlay: true,
+};
 
 // ── Colour / meta map ────────────────────────────────────────
 const META = {
@@ -166,6 +174,68 @@ function resetPreviewForRemoteSource(label) {
     lastResult = null;
 }
 
+function processingParams() {
+    return new URLSearchParams({
+        brightness: tuningState.brightness,
+        contrast: tuningState.contrast,
+        sharpness: tuningState.sharpness,
+        mask_strength: tuningState.mask_strength,
+    });
+}
+
+function previewParams() {
+    return new URLSearchParams({
+        brightness: tuningState.brightness,
+        contrast: tuningState.contrast,
+        sharpness: tuningState.sharpness,
+        wire_overlay: tuningState.wire_overlay,
+        ts: Date.now(),
+    });
+}
+
+function appendProcessingFields(formData) {
+    formData.append("brightness", tuningState.brightness);
+    formData.append("contrast", tuningState.contrast);
+    formData.append("sharpness", tuningState.sharpness);
+    formData.append("mask_strength", tuningState.mask_strength);
+}
+
+function markCapturePress(isActive) {
+    const btn = document.getElementById("captureBtn");
+    if (!btn) return;
+    btn.classList.toggle("is-capturing", isActive);
+    btn.disabled = isActive;
+}
+
+function updateTuningFromControls() {
+    tuningState = {
+        brightness: parseInt(document.getElementById("ctlBrightness")?.value || "0", 10),
+        contrast: parseInt(document.getElementById("ctlContrast")?.value || "0", 10),
+        sharpness: parseInt(document.getElementById("ctlSharpness")?.value || "0", 10),
+        mask_strength: parseInt(document.getElementById("ctlMask")?.value || "0", 10),
+        wire_overlay: !!document.getElementById("ctlOverlay")?.checked,
+    };
+
+    document.getElementById("valBrightness").textContent = tuningState.brightness;
+    document.getElementById("valContrast").textContent = tuningState.contrast;
+    document.getElementById("valSharpness").textContent = tuningState.sharpness;
+    document.getElementById("valMask").textContent = tuningState.mask_strength;
+
+    if (cameraPreviewActive) {
+        clearTimeout(previewRestartTimer);
+        previewRestartTimer = setTimeout(startCameraPreview, 350);
+    }
+}
+
+function resetTuning() {
+    document.getElementById("ctlBrightness").value = 0;
+    document.getElementById("ctlContrast").value = 0;
+    document.getElementById("ctlSharpness").value = 0;
+    document.getElementById("ctlMask").value = 0;
+    document.getElementById("ctlOverlay").checked = true;
+    updateTuningFromControls();
+}
+
 // ══════════════════════════════════════════════════════════════
 //  LOADER
 // ══════════════════════════════════════════════════════════════
@@ -203,6 +273,7 @@ async function predict() {
 
     const formData = new FormData();
     formData.append("file", selectedFile);
+    appendProcessingFields(formData);
 
     try {
         const res  = await fetch(`${API_BASE}/predict`, { method: "POST", body: formData });
@@ -228,7 +299,9 @@ async function predictStoredPath() {
     startLoader();
 
     try {
-        const url = `${API_BASE}/predict-path?path=${encodeURIComponent(path)}`;
+        const params = processingParams();
+        params.set("path", path);
+        const url = `${API_BASE}/predict-path?${params.toString()}`;
         const res = await fetch(url, { method: "POST" });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
@@ -242,10 +315,11 @@ async function predictStoredPath() {
 
 async function captureCamera() {
     resetPreviewForRemoteSource("camera_capture");
+    markCapturePress(true);
     startLoader();
 
     try {
-        const res = await fetch(`${API_BASE}/capture`, { method: "POST" });
+        const res = await fetch(`${API_BASE}/capture?${processingParams().toString()}`, { method: "POST" });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         if (data.path) {
@@ -256,6 +330,7 @@ async function captureCamera() {
     } catch (err) {
         alert(`Camera capture failed: ${err.message || "API error"}`);
     } finally {
+        markCapturePress(false);
         stopLoader();
     }
 }
@@ -282,7 +357,7 @@ function startCameraPreview() {
     const badge = document.getElementById("cameraStatus");
 
     cameraPreviewActive = true;
-    preview.src = `${API_BASE}/camera/stream?ts=${Date.now()}`;
+    preview.src = `${API_BASE}/camera/stream?${previewParams().toString()}`;
     preview.style.display = "block";
     empty.style.display = "none";
     badge.textContent = "Live";
@@ -932,6 +1007,13 @@ async function testConnection() {
 document.getElementById("cfg-minConf")?.addEventListener("input", e => {
     MIN_CONF = parseInt(e.target.value);
 });
+
+["ctlBrightness", "ctlContrast", "ctlSharpness", "ctlMask", "ctlOverlay"].forEach(id => {
+    document.getElementById(id)?.addEventListener("input", updateTuningFromControls);
+    document.getElementById(id)?.addEventListener("change", updateTuningFromControls);
+});
+
+updateTuningFromControls();
 
 function clearSession() {
     if (!confirm("Clear all session data? This cannot be undone.")) return;
