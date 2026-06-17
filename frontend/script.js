@@ -7,7 +7,7 @@ const DEFAULT_API_BASE = window.location.port === "3000"
     ? `${window.location.protocol}//${window.location.hostname}:8000`
     : window.location.origin;
 let API_BASE = DEFAULT_API_BASE || "http://127.0.0.1:8000";
-let MIN_CONF = 50;       // threshold from settings slider
+let MIN_CONF = 70;       // threshold from settings slider
 
 // ── Session state ────────────────────────────────────────────
 let total = 0, defects = 0, ok = 0;
@@ -23,8 +23,9 @@ let cameraPreviewActive = false;
 
 // ── Colour / meta map ────────────────────────────────────────
 const META = {
-    ok_wire:       { color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", label: "OK WIRE",       verdict: "PASS",   action: "ACCEPT — No defects detected on wire" },
-    defected_wire: { color: "#dc2626", bg: "#fef2f2", border: "#fecaca", label: "DEFECTED WIRE", verdict: "REJECT", action: "REJECT — Wire defect detected" },
+    ok_wire:       { color: "#16a34a", bg: "#ecfdf5", border: "#86efac", label: "Good Wire",      verdict: "PASS",   action: "Wire accepted. No defect detected." },
+    defected_wire: { color: "#dc2626", bg: "#fef2f2", border: "#fca5a5", label: "Defective Wire", verdict: "REJECT", action: "Wire rejected. Defect detected." },
+    manual_review: { color: "#d97706", bg: "#fffbeb", border: "#fcd34d", label: "Manual Inspection Required", verdict: "REVIEW", action: "Confidence is below the operating threshold. Please inspect manually." },
 };
 
 document.getElementById("cfg-apiUrl").value = API_BASE;
@@ -99,9 +100,11 @@ async function pollStatus() {
 
         setDot("dot-model", "green");
         document.getElementById("status-model").textContent = data.model_name + " Active";
+        document.getElementById("consoleModelStatus").textContent = data.model_name;
 
         setDot("dot-api", "green");
         document.getElementById("status-api").textContent = "API Connected";
+        document.getElementById("consoleApiStatus").textContent = "API Online";
 
         if (data.gpu_available) {
             const util = data.gpu_utilization != null ? `GPU ${data.gpu_utilization}%` : "GPU Active";
@@ -119,6 +122,8 @@ async function pollStatus() {
         setDot("dot-model", "red");  document.getElementById("status-model").textContent = "Model Offline";
         setDot("dot-api",   "red");  document.getElementById("status-api").textContent   = "API Unreachable";
         setDot("dot-gpu",   "red");  document.getElementById("status-gpu").textContent   = "—";
+        document.getElementById("consoleModelStatus").textContent = "Model Offline";
+        document.getElementById("consoleApiStatus").textContent = "API Offline";
     }
 }
 
@@ -148,7 +153,6 @@ function loadFile(file) {
     selectedFile = file;
     activeSourceName = file.name;
     document.getElementById("previewImage").src = URL.createObjectURL(file);
-    document.getElementById("drop-area").style.display   = "none";
     document.getElementById("previewWrap").style.display = "block";
     document.getElementById("resultPanel").style.display = "none";
     lastResult = null;
@@ -157,7 +161,6 @@ function loadFile(file) {
 function resetPreviewForRemoteSource(label) {
     selectedFile = null;
     activeSourceName = label;
-    document.getElementById("drop-area").style.display = "block";
     document.getElementById("previewWrap").style.display = "none";
     document.getElementById("resultPanel").style.display = "none";
     lastResult = null;
@@ -302,13 +305,19 @@ async function stopCameraPreview() {
 
     badge.textContent = "Stopped";
     badge.classList.remove("camera-ready");
+    setInspectionState("neutral");
 }
 
 function applyPredictionResult(data, sourceName) {
     const prediction = data.prediction;
     const confidence = parseFloat(parseFloat(data.confidence).toFixed(1));
+    const rawScore = typeof data.raw_score === "number" ? data.raw_score : parseFloat(data.raw_score || "0");
+    const goodScore = Math.max(0, Math.min(100, rawScore * 100));
+    const defectScore = Math.max(0, Math.min(100, (1 - rawScore) * 100));
+    const reviewScore = Math.max(0, Math.min(100, 100 - Math.abs(rawScore - 0.5) * 200));
+    const finalPrediction = confidence < MIN_CONF ? "manual_review" : prediction;
 
-    const m          = META[prediction] || META.ok_wire;
+    const m          = META[finalPrediction] || META.ok_wire;
     const timeStr    = new Date().toLocaleTimeString("en-GB", { hour12: false });
     const dateStr    = new Date().toLocaleDateString("en-CA");   // YYYY-MM-DD
     const isLowConf  = confidence < MIN_CONF;
@@ -325,7 +334,7 @@ function applyPredictionResult(data, sourceName) {
     badge.style.borderColor = m.border;
 
     const actionEl = document.getElementById("resultAction");
-    actionEl.textContent = prediction === "ok_wire" ? "✓ PASS" : "✕ REJECT";
+    actionEl.textContent = m.verdict;
     actionEl.style.color = m.color;
 
     document.getElementById("predictionText").textContent = m.label;
@@ -336,12 +345,13 @@ function applyPredictionResult(data, sourceName) {
     fill.style.width      = confidence + "%";
     fill.style.background = m.color;
 
-    let noteText = "⟶ " + m.action;
-    if (isLowConf) noteText += "\n⚠ Low confidence — consider re-imaging the wire sample.";
+    let noteText = m.action;
+    if (isLowConf) noteText += "\nCapture another frame or send the sample for manual inspection.";
     document.getElementById("actionText").textContent = noteText;
+    updateVerdictDisplay(finalPrediction, confidence, goodScore, reviewScore, defectScore);
 
     // ── Save last result for single PDF ───────────────────────
-    lastResult = { prediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label };
+    lastResult = { prediction: finalPrediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label };
 
     // ── Session counters ──────────────────────────────────────
     total++;
@@ -357,6 +367,47 @@ function applyPredictionResult(data, sourceName) {
     historyLog.unshift({ prediction, classLabel: m.label, confidence, time: timeStr, date: dateStr, fileName, color: m.color, verdict: m.verdict });
     renderHistory();
     updateBarChart();
+}
+
+function setInspectionState(state) {
+    const frame = document.getElementById("cameraFrame");
+    const strip = document.getElementById("verdictStrip");
+    [frame, strip].forEach(el => {
+        if (!el) return;
+        el.classList.remove("state-neutral", "state-good", "state-review", "state-bad");
+        el.classList.add(`state-${state}`);
+    });
+}
+
+function updateVerdictDisplay(prediction, confidence, goodScore, reviewScore, defectScore) {
+    const stateMap = {
+        ok_wire: "good",
+        defected_wire: "bad",
+        manual_review: "review",
+    };
+    const titleMap = {
+        ok_wire: "Good Wire",
+        defected_wire: "Defective Wire",
+        manual_review: "Manual Inspection Required",
+    };
+    const labelMap = {
+        ok_wire: "PASS",
+        defected_wire: "REJECT",
+        manual_review: "REVIEW",
+    };
+
+    const state = stateMap[prediction] || "neutral";
+    setInspectionState(state);
+
+    document.getElementById("verdictLabel").textContent = labelMap[prediction] || "LIVE REVIEW";
+    document.getElementById("verdictTitle").textContent = titleMap[prediction] || "Awaiting Capture";
+    document.getElementById("verdictSubtitle").textContent =
+        prediction === "manual_review"
+            ? `Confidence ${confidence.toFixed(1)}%. Send this sample for manual inspection.`
+            : `Confidence ${confidence.toFixed(1)}%. Result recorded in the inspection log.`;
+    document.getElementById("scoreGood").textContent = `${goodScore.toFixed(1)}%`;
+    document.getElementById("scoreReview").textContent = `${reviewScore.toFixed(1)}%`;
+    document.getElementById("scoreDefect").textContent = `${defectScore.toFixed(1)}%`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -897,4 +948,16 @@ function clearSession() {
     document.getElementById("logCount").textContent    = "0 entries";
     document.getElementById("resultPanel").style.display = "none";
     updateBarChart();
+    setInspectionState("neutral");
+    document.getElementById("verdictLabel").textContent = "Live Review";
+    document.getElementById("verdictTitle").textContent = "Awaiting Capture";
+    document.getElementById("verdictSubtitle").textContent = "Align the wire in view, then capture for inspection.";
+    document.getElementById("scoreGood").textContent = "--%";
+    document.getElementById("scoreReview").textContent = "--%";
+    document.getElementById("scoreDefect").textContent = "--%";
 }
+
+setInspectionState("neutral");
+setTimeout(() => {
+    startCameraPreview();
+}, 800);
