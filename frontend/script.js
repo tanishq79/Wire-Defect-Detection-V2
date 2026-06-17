@@ -220,10 +220,27 @@ function updateTuningFromControls() {
     document.getElementById("valContrast").textContent = tuningState.contrast;
     document.getElementById("valSharpness").textContent = tuningState.sharpness;
     document.getElementById("valMask").textContent = tuningState.mask_strength;
+    updateMaskWarning();
 
     if (cameraPreviewActive) {
         clearTimeout(previewRestartTimer);
         previewRestartTimer = setTimeout(startCameraPreview, 350);
+    }
+}
+
+function updateMaskWarning() {
+    const warning = document.getElementById("maskWarning");
+    if (!warning) return;
+
+    warning.classList.remove("hidden", "strong");
+    if (tuningState.mask_strength === 0) {
+        warning.classList.add("hidden");
+        warning.textContent = "";
+    } else if (tuningState.mask_strength >= 60) {
+        warning.classList.add("strong");
+        warning.textContent = "If the wire outline is not clear, set Wire mask to 0 and capture again.";
+    } else {
+        warning.textContent = "Use Wire mask carefully. Keep it at 0 if the preview looks unclear.";
     }
 }
 
