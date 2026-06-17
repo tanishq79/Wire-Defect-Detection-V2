@@ -93,7 +93,7 @@ setInterval(tick, 1000);
 // ══════════════════════════════════════════════════════════════
 async function pollStatus() {
     try {
-        const res  = await fetch(`${API_BASE}/status`, { signal: AbortSignal.timeout(3000) });
+        const res  = await fetch(`${API_BASE}/status`, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         systemInfo = data;
@@ -119,11 +119,11 @@ async function pollStatus() {
         checkCameraStatus();
 
     } catch {
-        setDot("dot-model", "red");  document.getElementById("status-model").textContent = "Model Offline";
-        setDot("dot-api",   "red");  document.getElementById("status-api").textContent   = "API Unreachable";
-        setDot("dot-gpu",   "red");  document.getElementById("status-gpu").textContent   = "—";
-        document.getElementById("consoleModelStatus").textContent = "Model Offline";
-        document.getElementById("consoleApiStatus").textContent = "API Offline";
+        setDot("dot-model", "amber"); document.getElementById("status-model").textContent = "Model Checking";
+        setDot("dot-api",   "amber"); document.getElementById("status-api").textContent   = "API Checking";
+        setDot("dot-gpu",   "amber"); document.getElementById("status-gpu").textContent   = "CPU Mode";
+        document.getElementById("consoleModelStatus").textContent = "Model Check";
+        document.getElementById("consoleApiStatus").textContent = "API Check";
     }
 }
 
@@ -265,13 +265,13 @@ async function checkCameraStatus() {
     if (!badge) return;
 
     try {
-        const res = await fetch(`${API_BASE}/camera/status`, { signal: AbortSignal.timeout(3000) });
+        const res = await fetch(`${API_BASE}/camera/status`, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
-        badge.textContent = data.available ? data.model || "Ready" : "Unavailable";
+        badge.textContent = data.available ? data.model || "Ready" : "Camera Check";
         badge.classList.toggle("camera-ready", !!data.available);
     } catch {
-        badge.textContent = "Unavailable";
+        badge.textContent = "Camera Check";
         badge.classList.remove("camera-ready");
     }
 }
@@ -917,7 +917,7 @@ async function testConnection() {
     textEl.textContent = "Testing…";
     dotEl.className    = "dot amber";
     try {
-        const res  = await fetch(`${url}/status`, { signal: AbortSignal.timeout(3000) });
+        const res  = await fetch(`${url}/status`, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         dotEl.className    = "dot green";
