@@ -498,15 +498,6 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     accent-color: #38bdf8;
 }
 
-.overlay-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-    color: rgba(255,255,255,.82);
-    font-size: 12px;
-}
-
 .tuning-warning {
     margin-top: 10px;
     padding: 8px 9px;

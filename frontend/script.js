@@ -26,7 +26,6 @@ let tuningState = {
     contrast: 0,
     sharpness: 0,
     mask_strength: 0,
-    wire_overlay: true,
 };
 
 // ── Colour / meta map ────────────────────────────────────────
@@ -218,7 +217,7 @@ function previewParams() {
         brightness: tuningState.brightness,
         contrast: tuningState.contrast,
         sharpness: tuningState.sharpness,
-        wire_overlay: tuningState.wire_overlay,
+        wire_overlay: false,
         ts: Date.now(),
     });
 }
@@ -255,7 +254,6 @@ function updateTuningFromControls() {
         contrast: parseInt(document.getElementById("ctlContrast")?.value || "0", 10),
         sharpness: parseInt(document.getElementById("ctlSharpness")?.value || "0", 10),
         mask_strength: parseInt(document.getElementById("ctlMask")?.value || "0", 10),
-        wire_overlay: !!document.getElementById("ctlOverlay")?.checked,
     };
 
     document.getElementById("valBrightness").textContent = tuningState.brightness;
@@ -292,7 +290,6 @@ function resetTuning() {
     document.getElementById("ctlContrast").value = 0;
     document.getElementById("ctlSharpness").value = 0;
     document.getElementById("ctlMask").value = 0;
-    document.getElementById("ctlOverlay").checked = true;
     updateTuningFromControls();
 }
 
@@ -1073,7 +1070,7 @@ document.getElementById("cfg-minConf")?.addEventListener("input", e => {
     MIN_CONF = parseInt(e.target.value);
 });
 
-["ctlBrightness", "ctlContrast", "ctlSharpness", "ctlMask", "ctlOverlay"].forEach(id => {
+["ctlBrightness", "ctlContrast", "ctlSharpness", "ctlMask"].forEach(id => {
     document.getElementById(id)?.addEventListener("input", updateTuningFromControls);
     document.getElementById(id)?.addEventListener("change", updateTuningFromControls);
 });

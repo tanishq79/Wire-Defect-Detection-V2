@@ -312,7 +312,7 @@ class CameraManager:
 
         return Image.fromarray(frame).convert("RGB")
 
-    def get_frame_jpeg(self, processing: Optional[dict] = None, wire_overlay: bool = True) -> bytes:
+    def get_frame_jpeg(self, processing: Optional[dict] = None, wire_overlay: bool = False) -> bytes:
         img = self.get_frame_image()
         if processing:
             img = apply_image_enhancements(img, processing)
@@ -366,7 +366,7 @@ def capture_from_picamera2() -> Path:
     return camera_manager.capture_image()
 
 
-def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = True):
+def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
     while True:
         try:
             frame = camera_manager.get_frame_jpeg(processing, wire_overlay)
@@ -490,7 +490,7 @@ async def camera_stream(
     brightness: float = 0,
     contrast: float = 0,
     sharpness: float = 0,
-    wire_overlay: bool = True,
+    wire_overlay: bool = False,
 ):
     processing = build_processing_settings(brightness, contrast, sharpness, 0)
     return StreamingResponse(
