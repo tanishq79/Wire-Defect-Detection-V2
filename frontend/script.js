@@ -203,8 +203,20 @@ function appendProcessingFields(formData) {
 function markCapturePress(isActive) {
     const btn = document.getElementById("captureBtn");
     if (!btn) return;
-    btn.classList.toggle("is-capturing", isActive);
+    btn.classList.add("is-pressed");
+    setTimeout(() => btn.classList.remove("is-pressed"), 180);
+    btn.classList.toggle("is-processing", isActive);
     btn.disabled = isActive;
+}
+
+function applyPreviewFilter() {
+    const preview = document.getElementById("cameraPreview");
+    if (!preview) return;
+
+    const brightness = 1 + tuningState.brightness / 100;
+    const contrast = 1 + tuningState.contrast / 100;
+    const sharpness = 1 + tuningState.sharpness / 180;
+    preview.style.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${sharpness})`;
 }
 
 function updateTuningFromControls() {
@@ -221,10 +233,11 @@ function updateTuningFromControls() {
     document.getElementById("valSharpness").textContent = tuningState.sharpness;
     document.getElementById("valMask").textContent = tuningState.mask_strength;
     updateMaskWarning();
+    applyPreviewFilter();
 
     if (cameraPreviewActive) {
         clearTimeout(previewRestartTimer);
-        previewRestartTimer = setTimeout(startCameraPreview, 350);
+        previewRestartTimer = setTimeout(startCameraPreview, 700);
     }
 }
 
@@ -388,6 +401,7 @@ async function stopCameraPreview() {
 
     cameraPreviewActive = false;
     preview.removeAttribute("src");
+    preview.style.filter = "";
     preview.style.display = "none";
     empty.style.display = "flex";
 

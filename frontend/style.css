@@ -322,6 +322,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     width: 100%;
     height: 100%;
     object-fit: contain;
+    transition: filter .12s ease;
 }
 
 .preview-shell .camera-empty {
@@ -402,18 +403,18 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 }
 
 .capture-btn:active,
-.capture-btn.is-capturing {
+.capture-btn.is-pressed {
     transform: translateY(5px) scale(.96);
     box-shadow: 0 5px 12px rgba(0,0,0,.36), inset 0 4px 12px rgba(0,0,0,.22);
 }
 
 .capture-btn:active span,
-.capture-btn.is-capturing span {
+.capture-btn.is-pressed span {
     transform: scale(.86);
     box-shadow: inset 0 5px 12px rgba(15,23,42,.32);
 }
 
-.capture-btn.is-capturing::after {
+.capture-btn.is-processing::after {
     content: "";
     position: absolute;
     width: 94px;
@@ -423,7 +424,11 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     animation: capture-pulse .7s ease-out infinite;
 }
 
-.capture-btn:disabled { cursor: wait; opacity: .88; }
+.capture-btn.is-processing {
+    box-shadow: 0 10px 22px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.28);
+}
+
+.capture-btn:disabled { cursor: wait; opacity: .92; }
 
 @keyframes capture-pulse {
     from { transform: scale(.72); opacity: .7; }

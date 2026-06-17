@@ -45,6 +45,8 @@ INSPECTION_DIR = Path(os.getenv("WIRE_INSPECTION_DIR", "inspection_data")).resol
 UPLOAD_DIR = INSPECTION_DIR / "uploads"
 PROCESSED_DIR = INSPECTION_DIR / "processed"
 CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
+STILL_WIDTH = int(os.getenv("WIRE_STILL_WIDTH", "1600"))
+STILL_HEIGHT = int(os.getenv("WIRE_STILL_HEIGHT", "1200"))
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -155,6 +157,17 @@ def predict_image(img: Image.Image, processing: Optional[dict] = None):
     }
 
 
+def warm_up_model():
+    dummy = np.zeros((1, IMG_SIZE, IMG_SIZE, 3), dtype=np.float32)
+    try:
+        model.predict(dummy, verbose=0)
+    except Exception:
+        pass
+
+
+warm_up_model()
+
+
 def log_inspection(result: dict, source: str, source_name: Optional[str] = None):
     INSPECTION_DIR.mkdir(parents=True, exist_ok=True)
     record = {
@@ -219,7 +232,7 @@ class CameraManager:
         self.picam2 = None
         self.lock = threading.Lock()
         self.preview_size = (768, 432)
-        self.still_size = (4056, 3040)
+        self.still_size = (STILL_WIDTH, STILL_HEIGHT)
 
     def start(self):
         if self.picam2 is not None:
@@ -312,7 +325,7 @@ class CameraManager:
     def capture_image(self) -> Path:
         self.start()
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-        filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".png"
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".jpg"
         output_path = CAPTURE_DIR / filename
 
         with self.lock:
@@ -324,7 +337,7 @@ class CameraManager:
         if image_array.ndim == 3 and image_array.shape[2] == 4:
             image_array = image_array[:, :, :3]
 
-        Image.fromarray(image_array).convert("RGB").save(output_path)
+        Image.fromarray(image_array).convert("RGB").save(output_path, format="JPEG", quality=94)
         return output_path
 
 
