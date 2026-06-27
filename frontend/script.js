@@ -913,6 +913,22 @@ function exportSinglePDF() {
 // ══════════════════════════════════════════════════════════════
 //  PDF EXPORT — full session report
 // ══════════════════════════════════════════════════════════════
+function fitPdfText(doc, text, maxWidth) {
+    const clean = String(text || "-").replace(/\s+/g, " ");
+    if (doc.getTextWidth(clean) <= maxWidth) return clean;
+
+    const normalized = clean.replace(/\\/g, "/");
+    const filename = normalized.split("/").filter(Boolean).pop() || clean;
+    const candidate = filename.length < clean.length ? ".../" + filename : clean;
+    if (doc.getTextWidth(candidate) <= maxWidth) return candidate;
+
+    let trimmed = candidate;
+    while (trimmed.length > 4 && doc.getTextWidth(trimmed + "...") > maxWidth) {
+        trimmed = trimmed.slice(0, -1);
+    }
+    return trimmed.length > 4 ? trimmed + "..." : "...";
+}
+
 function exportSessionPDF() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
     if (!window.jspdf) { alert("PDF export library is not loaded. Check internet connection or export CSV instead."); return; }
@@ -992,7 +1008,8 @@ function exportSessionPDF() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(107, 114, 128);
-    const cols = [margin, margin + 10, margin + 58, margin + 90, margin + 120, margin + 148];
+    const cols = [margin, margin + 10, margin + 60, margin + 88, margin + 145, margin + 166];
+    const fileMaxWidth = cols[4] - cols[3] - 5;
     ["#", "CLASS", "CONFIDENCE", "FILE", "TIME", "VERDICT"].forEach((h, i) => doc.text(h, cols[i], y + 4));
     y += 10;
 
@@ -1021,7 +1038,7 @@ function exportSessionPDF() {
         doc.text(h.confidence + "%", cols[2], y + 3);
 
         doc.setTextColor(107, 114, 128);
-        const fn = (h.fileName || "—").slice(0, 22);
+        const fn = fitPdfText(doc, h.fileName || "-", fileMaxWidth);
         doc.text(fn, cols[3], y + 3);
         doc.text(h.time, cols[4], y + 3);
 
