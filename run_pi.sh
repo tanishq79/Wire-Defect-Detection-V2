@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-BRANCH="${SURFACEAI_BRANCH:-codex/pi-ui-api-hardening}"
+BRANCH="${SURFACEAI_BRANCH:-main}"
 
 if [ -z "${VIRTUAL_ENV:-}" ]; then
   echo "Virtual environment is not active."

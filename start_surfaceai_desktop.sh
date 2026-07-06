@@ -2,8 +2,19 @@
 set -euo pipefail
 
 APP_DIR="${SURFACEAI_APP_DIR:-$HOME/Desktop/Wire-Defect-Detection-V2}"
-BRANCH="${SURFACEAI_BRANCH:-codex/pi-ui-api-hardening}"
+BRANCH="${SURFACEAI_BRANCH:-main}"
 URL="http://127.0.0.1:8000"
+
+on_error() {
+  local code=$?
+  echo
+  echo "SurfaceAI could not start. The command above failed with exit code $code."
+  echo "Check the message above, then press Enter to close this window."
+  read -r
+  exit "$code"
+}
+
+trap on_error ERR
 
 cd "$APP_DIR"
 

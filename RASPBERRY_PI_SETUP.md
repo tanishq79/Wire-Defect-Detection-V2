@@ -71,8 +71,8 @@ Create the desktop icon:
 ```bash
 cd ~/Desktop/Wire-Defect-Detection-V2
 git fetch origin
-git checkout codex/pi-ui-api-hardening
-git pull
+git checkout main
+git pull --ff-only origin main
 chmod +x install_desktop_launcher.sh start_surfaceai_desktop.sh run_pi.sh
 ./install_desktop_launcher.sh
 ```
@@ -81,7 +81,7 @@ After that, double-click `SurfaceAI` on the Raspberry Pi desktop.
 
 The launcher will:
 
-- pull the latest `codex/pi-ui-api-hardening` branch
+- pull the latest `main` branch
 - start the FastAPI server using `.venv`
 - open the browser at `http://127.0.0.1:8000`
 - keep a terminal open for logs and errors
@@ -149,8 +149,8 @@ If the changes are pushed to the GitHub repo:
 ```bash
 cd ~/Desktop/Wire-Defect-Detection-V2
 git fetch origin
-git checkout codex/pi-ui-api-hardening
-git pull
+git checkout main
+git pull --ff-only origin main
 source .venv/bin/activate
 ./run_pi.sh
 ```
