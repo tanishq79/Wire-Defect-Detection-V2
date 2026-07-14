@@ -233,27 +233,71 @@ class CameraManager:
         self.lock = threading.Lock()
         self.preview_size = (768, 432)
         self.still_size = (STILL_WIDTH, STILL_HEIGHT)
+        self.camera_index = int(os.getenv("WIRE_CAMERA_INDEX", "0"))
+        self.last_error = None
 
-    def start(self):
-        if self.picam2 is not None:
-            return
-
+    def _picamera2_class(self):
         try:
             from picamera2 import Picamera2
+            return Picamera2
         except ImportError as exc:
             raise HTTPException(
                 status_code=503,
                 detail="picamera2 is not installed. Install it with: sudo apt install -y python3-picamera2",
             ) from exc
 
-        camera = Picamera2()
-        config = camera.create_preview_configuration(
-            main={"size": self.preview_size, "format": "RGB888"}
-        )
-        camera.configure(config)
-        camera.start()
-        time.sleep(1)
-        self.picam2 = camera
+    def detected_cameras(self):
+        Picamera2 = self._picamera2_class()
+        try:
+            return Picamera2.global_camera_info()
+        except Exception as exc:
+            self.last_error = str(exc)
+            return []
+
+    def start(self):
+        if self.picam2 is not None:
+            return
+
+        with self.lock:
+            if self.picam2 is not None:
+                return
+
+            Picamera2 = self._picamera2_class()
+            cameras = self.detected_cameras()
+            if not cameras:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "No camera detected by Picamera2. Confirm rpicam-hello --list-cameras works, "
+                        "then restart SurfaceAI."
+                    ),
+                )
+
+            if self.camera_index >= len(cameras):
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"WIRE_CAMERA_INDEX={self.camera_index} is invalid. Detected {len(cameras)} camera(s).",
+                )
+
+            camera = None
+            try:
+                camera = Picamera2(self.camera_index)
+                config = camera.create_preview_configuration(
+                    main={"size": self.preview_size, "format": "RGB888"}
+                )
+                camera.configure(config)
+                camera.start()
+                time.sleep(1)
+                self.picam2 = camera
+                self.last_error = None
+            except Exception as exc:
+                self.last_error = str(exc)
+                try:
+                    if camera is not None:
+                        camera.close()
+                except Exception:
+                    pass
+                raise HTTPException(status_code=503, detail=f"Camera failed to start: {exc}") from exc
 
     def stop(self):
         if self.picam2 is None:
@@ -267,11 +311,24 @@ class CameraManager:
     def status(self):
         if self.picam2 is None:
             try:
-                from picamera2 import Picamera2  # noqa: F401
+                cameras = self.detected_cameras()
+                if not cameras:
+                    return {
+                        "available": False,
+                        "started": False,
+                        "camera_index": self.camera_index,
+                        "cameras": [],
+                        "error": self.last_error or "No camera detected by Picamera2",
+                        "capture_dir": str(CAPTURE_DIR),
+                    }
+
+                selected = cameras[min(self.camera_index, len(cameras) - 1)]
                 return {
                     "available": True,
-                    "model": "imx477",
+                    "model": selected.get("Model", "unknown"),
                     "started": False,
+                    "camera_index": self.camera_index,
+                    "cameras": cameras,
                     "preview_size": self.preview_size,
                     "still_size": self.still_size,
                     "capture_dir": str(CAPTURE_DIR),
@@ -290,6 +347,7 @@ class CameraManager:
                 "available": True,
                 "model": properties.get("Model", "unknown"),
                 "started": True,
+                "camera_index": self.camera_index,
                 "preview_size": self.preview_size,
                 "still_size": self.still_size,
                 "capture_dir": str(CAPTURE_DIR),
@@ -370,7 +428,9 @@ def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
     while True:
         try:
             frame = camera_manager.get_frame_jpeg(processing, wire_overlay)
-        except Exception:
+        except Exception as exc:
+            camera_manager.last_error = str(exc)
+            print(f"Camera stream stopped: {exc}", flush=True)
             break
 
         yield (
@@ -493,6 +553,7 @@ async def camera_stream(
     wire_overlay: bool = False,
 ):
     processing = build_processing_settings(brightness, contrast, sharpness, 0)
+    camera_manager.start()
     return StreamingResponse(
         mjpeg_frames(processing, wire_overlay),
         media_type="multipart/x-mixed-replace; boundary=frame",
