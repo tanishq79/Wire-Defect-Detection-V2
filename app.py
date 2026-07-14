@@ -254,6 +254,29 @@ class CameraManager:
             self.last_error = str(exc)
             return []
 
+    def _create_camera_config(self, camera, mode: str):
+        if mode == "still":
+            config_factory = camera.create_still_configuration
+            size = self.still_size
+        else:
+            config_factory = camera.create_preview_configuration
+            size = self.preview_size
+
+        attempts = [
+            {"size": size, "format": "RGB888"},
+            {"size": size},
+        ]
+        last_exc = None
+        for main_config in attempts:
+            try:
+                config = config_factory(main=main_config)
+                return config
+            except Exception as exc:
+                last_exc = exc
+                print(f"Camera {mode} config failed with {main_config}: {exc}", flush=True)
+
+        raise last_exc
+
     def start(self):
         if self.picam2 is not None:
             return
@@ -282,9 +305,7 @@ class CameraManager:
             camera = None
             try:
                 camera = Picamera2(self.camera_index)
-                config = camera.create_preview_configuration(
-                    main={"size": self.preview_size, "format": "RGB888"}
-                )
+                config = self._create_camera_config(camera, "preview")
                 camera.configure(config)
                 camera.start()
                 time.sleep(1)
@@ -292,6 +313,7 @@ class CameraManager:
                 self.last_error = None
             except Exception as exc:
                 self.last_error = str(exc)
+                print(f"Camera failed to start: {exc}", flush=True)
                 try:
                     if camera is not None:
                         camera.close()
@@ -387,9 +409,7 @@ class CameraManager:
         output_path = CAPTURE_DIR / filename
 
         with self.lock:
-            still_config = self.picam2.create_still_configuration(
-                main={"size": self.still_size, "format": "RGB888"}
-            )
+            still_config = self._create_camera_config(self.picam2, "still")
             image_array = self.picam2.switch_mode_and_capture_array(still_config)
 
         if image_array.ndim == 3 and image_array.shape[2] == 4:
