@@ -5,9 +5,11 @@ import io
 import json
 import os
 import platform
+import tempfile
 import threading
 import time
 import uuid
+import zipfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,12 +51,49 @@ def install_keras_legacy_config_shims():
     depthwise_layer._surfaceai_legacy_shim = True
 
 
+def sanitize_keras_config(value):
+    if isinstance(value, list):
+        return [sanitize_keras_config(item) for item in value]
+
+    if not isinstance(value, dict):
+        return value
+
+    cleaned = {key: sanitize_keras_config(item) for key, item in value.items()}
+    class_name = cleaned.get("class_name")
+    config = cleaned.get("config")
+
+    if isinstance(config, dict):
+        if class_name == "DepthwiseConv2D":
+            config.pop("groups", None)
+        if class_name == "BatchNormalization" and isinstance(config.get("axis"), list) and len(config["axis"]) == 1:
+            config["axis"] = config["axis"][0]
+
+    return cleaned
+
+
+def load_sanitized_keras_archive(model_path: str):
+    with tempfile.TemporaryDirectory(prefix="surfaceai_model_") as tmp_dir:
+        with zipfile.ZipFile(model_path) as archive:
+            archive.extractall(tmp_dir)
+
+        config_path = Path(tmp_dir) / "config.json"
+        weights_path = Path(tmp_dir) / "model.weights.h5"
+
+        with config_path.open("r", encoding="utf-8") as config_file:
+            config = sanitize_keras_config(json.load(config_file))
+
+        rebuilt_model = tf.keras.models.model_from_json(json.dumps(config))
+        rebuilt_model.load_weights(str(weights_path))
+        return rebuilt_model
+
+
 def load_wire_model():
     install_keras_legacy_config_shims()
     try:
         return tf.keras.models.load_model("best_wire_model.keras", compile=False, safe_mode=False)
-    except TypeError:
-        return tf.keras.models.load_model("best_wire_model.keras", compile=False)
+    except Exception as exc:
+        print(f"Standard model load failed, trying sanitized legacy load: {exc}", flush=True)
+        return load_sanitized_keras_archive("best_wire_model.keras")
 
 
 # Load best trained model
