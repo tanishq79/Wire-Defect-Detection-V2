@@ -33,11 +33,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def install_keras_legacy_config_shims():
+    depthwise_layer = tf.keras.layers.DepthwiseConv2D
+    original_from_config = depthwise_layer.from_config
+
+    if getattr(depthwise_layer, "_surfaceai_legacy_shim", False):
+        return
+
+    def depthwise_from_config(cls, config):
+        config = dict(config)
+        config.pop("groups", None)
+        return original_from_config(config)
+
+    depthwise_layer.from_config = classmethod(depthwise_from_config)
+    depthwise_layer._surfaceai_legacy_shim = True
+
+
+def load_wire_model():
+    install_keras_legacy_config_shims()
+    try:
+        return tf.keras.models.load_model("best_wire_model.keras", compile=False, safe_mode=False)
+    except TypeError:
+        return tf.keras.models.load_model("best_wire_model.keras", compile=False)
+
+
 # Load best trained model
-model = tf.keras.models.load_model(
-    "best_wire_model.keras",
-    compile=False
-)
+try:
+    model = load_wire_model()
+except Exception as exc:
+    print(f"SurfaceAI model failed to load: {exc}", flush=True)
+    raise
 
 IMG_SIZE = 224
 IMAGE_ROOT = Path(os.getenv("WIRE_IMAGE_ROOT", "images")).resolve()
