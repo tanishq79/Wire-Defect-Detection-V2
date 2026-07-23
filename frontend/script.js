@@ -214,9 +214,9 @@ function processingParams() {
 
 function previewParams() {
     return new URLSearchParams({
-        brightness: tuningState.brightness,
-        contrast: tuningState.contrast,
-        sharpness: tuningState.sharpness,
+        brightness: 0,
+        contrast: 0,
+        sharpness: 0,
         wire_overlay: false,
         ts: Date.now(),
     });
@@ -262,11 +262,7 @@ function updateTuningFromControls() {
     document.getElementById("valMask").textContent = tuningState.mask_strength;
     updateMaskWarning();
     applyPreviewFilter();
-
-    if (cameraPreviewActive) {
-        clearTimeout(previewRestartTimer);
-        previewRestartTimer = setTimeout(startCameraPreview, 700);
-    }
+    clearTimeout(previewRestartTimer);
 }
 
 function updateMaskWarning() {

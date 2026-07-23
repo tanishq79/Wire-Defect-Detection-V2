@@ -113,6 +113,11 @@ PROCESSED_DIR = INSPECTION_DIR / "processed"
 CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
 STILL_WIDTH = int(os.getenv("WIRE_STILL_WIDTH", "1600"))
 STILL_HEIGHT = int(os.getenv("WIRE_STILL_HEIGHT", "1200"))
+PREVIEW_WIDTH = int(os.getenv("WIRE_PREVIEW_WIDTH", "640"))
+PREVIEW_HEIGHT = int(os.getenv("WIRE_PREVIEW_HEIGHT", "360"))
+STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "8"))))
+STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "68"))))
+CAPTURE_MODE = os.getenv("WIRE_CAPTURE_MODE", "preview").strip().lower()
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -297,7 +302,7 @@ class CameraManager:
     def __init__(self):
         self.picam2 = None
         self.lock = threading.Lock()
-        self.preview_size = (768, 432)
+        self.preview_size = (PREVIEW_WIDTH, PREVIEW_HEIGHT)
         self.still_size = (STILL_WIDTH, STILL_HEIGHT)
         self.camera_index = int(os.getenv("WIRE_CAMERA_INDEX", "0"))
         self.last_error = None
@@ -465,7 +470,7 @@ class CameraManager:
         if wire_overlay:
             img = draw_wire_overlay(img, processing or build_processing_settings())
         output = io.BytesIO()
-        img.save(output, format="JPEG", quality=80)
+        img.save(output, format="JPEG", quality=STREAM_JPEG_QUALITY, optimize=True)
         return output.getvalue()
 
     def capture_image(self) -> Path:
@@ -474,9 +479,13 @@ class CameraManager:
         filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".jpg"
         output_path = CAPTURE_DIR / filename
 
-        with self.lock:
-            still_config = self._create_camera_config(self.picam2, "still")
-            image_array = self.picam2.switch_mode_and_capture_array(still_config)
+        if CAPTURE_MODE == "still":
+            with self.lock:
+                still_config = self._create_camera_config(self.picam2, "still")
+                image_array = self.picam2.switch_mode_and_capture_array(still_config)
+        else:
+            with self.lock:
+                image_array = self.picam2.capture_array()
 
         if image_array.ndim == 3 and image_array.shape[2] == 4:
             image_array = image_array[:, :, :3]
@@ -523,7 +532,7 @@ def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
         )
-        time.sleep(0.08)
+        time.sleep(1 / STREAM_FPS)
 
 @app.get("/")
 async def root():
@@ -555,6 +564,10 @@ async def status():
         "image_root": str(IMAGE_ROOT),
         "inspection_dir": str(INSPECTION_DIR),
         "capture_dir": str(CAPTURE_DIR),
+        "camera": camera_manager.status(),
+        "stream_fps": STREAM_FPS,
+        "stream_jpeg_quality": STREAM_JPEG_QUALITY,
+        "capture_mode": CAPTURE_MODE,
         "ui_available": Path("frontend/index.html").exists(),
     }
 
