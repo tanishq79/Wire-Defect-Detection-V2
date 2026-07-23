@@ -1,5 +1,6 @@
 tensorflow==2.15.0 ; python_version < "3.12"
 tensorflow==2.21.0 ; python_version >= "3.12"
+tf-keras==2.21.0 ; python_version >= "3.12"
 tensorflow-metal==1.2.0 ; platform_system=="Darwin"
 
 fastapi==0.110.0

@@ -17,6 +17,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
