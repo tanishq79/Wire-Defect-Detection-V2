@@ -306,7 +306,7 @@ Output:
 
 **Tanishq Jadhav**
 
-B.Tech Student (Artificial Intelligence & Machine Learning)
+B.Tech Student Computer Science Engineering (Artificial Intelligence & Machine Learning)
 
 Project: Wire Defect Detection using Transfer Learning
 
