@@ -1,23 +1,24 @@
-# Wire Defect Detection using Transfer Learning
+# Wire Defect Detection (Version 2)
 
 ## Overview
 
-Wire Defect Detection is a computer vision system developed to automatically classify microscope images of industrial wire surfaces into:
+Wire Defect Detection V2 is a deep learning-based computer vision system designed to automatically inspect industrial wire surface images and classify them into two categories:
 
 - Defected Wire
 - OK Wire
 
-The system uses Transfer Learning with MobileNetV2 and provides real-time predictions through a FastAPI backend and a web-based frontend.
+The system leverages Transfer Learning with MobileNetV2 to achieve high classification accuracy while reducing training time. It provides real-time predictions through a FastAPI backend and an interactive web-based frontend, making it suitable for industrial quality inspection applications.
 
 ---
 
 ## Performance Highlights
 
 - Test Accuracy: **94.74%**
+- Validation Accuracy: **95.58%**
 - Precision: **94%**
 - Recall: **94%**
 - F1 Score: **94%**
-- Evaluated on **114 completely unseen test images**
+- Evaluated on **114 unseen test images**
 - Powered by **MobileNetV2 Transfer Learning**
 
 ---
@@ -26,12 +27,12 @@ The system uses Transfer Learning with MobileNetV2 and provides real-time predic
 
 - Binary classification of industrial wire images
 - Transfer Learning using MobileNetV2
-- FastAPI backend for real-time inference
+- FastAPI REST API for real-time inference
 - Interactive web interface
 - GPU-accelerated training using Apple Silicon (TensorFlow Metal)
-- Real-time confidence scores
-- Model evaluation using confusion matrix and classification metrics
-- Optimized for industrial quality inspection
+- Real-time confidence score prediction
+- Confusion Matrix and Classification Report generation
+- Optimized for industrial wire quality inspection
 
 ---
 
@@ -51,7 +52,7 @@ The dataset consists of microscope images captured from industrial wire surfaces
 | Training | 526 |
 | Validation | 113 |
 | Testing | 114 |
-| Total | 753 |
+| **Total** | **753** |
 
 ### Class Distribution
 
@@ -70,16 +71,15 @@ The dataset consists of microscope images captured from industrial wire surfaces
 
 ### Transfer Learning Strategy
 
-- Frozen feature extraction layers
-- Custom classification head
+- Frozen MobileNetV2 feature extraction layers
 - Global Average Pooling Layer
-- Dense Layer (64 units)
-- Dropout Regularization
-- Binary Classification Output Layer
+- Dense Layer (64 Units, ReLU)
+- Dropout Layer
+- Binary Classification Output Layer (Sigmoid)
 
 ### Input Size
 
-224 × 224 RGB Images
+- **224 × 224 RGB Images**
 
 ---
 
@@ -87,13 +87,13 @@ The dataset consists of microscope images captured from industrial wire surfaces
 
 | Parameter | Value |
 |------------|--------|
+| Base Model | MobileNetV2 |
 | Epochs | 25 |
 | Batch Size | 16 |
 | Optimizer | Adam |
 | Loss Function | Binary Cross Entropy |
-| Base Model | MobileNetV2 |
-| Device | Apple M3 Max GPU |
 | Framework | TensorFlow 2.15 |
+| Device | Apple M3 Max GPU |
 | Image Size | 224 × 224 |
 
 ### Data Augmentation
@@ -110,16 +110,16 @@ The dataset consists of microscope images captured from industrial wire surfaces
 
 | Metric | Score |
 |----------|---------:|
-| Accuracy | 95.58% |
+| Accuracy | **95.58%** |
 
-### Test Results (Unseen Images)
+### Test Results
 
 | Metric | Score |
 |----------|---------:|
-| Accuracy | 94.74% |
-| Precision | 94% |
-| Recall | 94% |
-| F1 Score | 94% |
+| Accuracy | **94.74%** |
+| Precision | **94%** |
+| Recall | **94%** |
+| F1 Score | **94%** |
 
 ### Confusion Matrix
 
@@ -130,10 +130,10 @@ The dataset consists of microscope images captured from industrial wire surfaces
 
 ### Summary
 
-- Total Test Images: 114
-- Correct Predictions: 108
-- Incorrect Predictions: 6
-- Overall Accuracy: 94.74%
+- Total Test Images: **114**
+- Correct Predictions: **108**
+- Incorrect Predictions: **6**
+- Overall Accuracy: **94.74%**
 
 ---
 
@@ -181,13 +181,13 @@ python3.10 -m venv venv
 
 ### Activate Environment
 
-macOS/Linux:
+**macOS / Linux**
 
 ```bash
 source venv/bin/activate
 ```
 
-Windows:
+**Windows**
 
 ```bash
 venv\Scripts\activate
@@ -201,7 +201,71 @@ pip install -r requirements.txt
 
 ---
 
+## Verify Environment
+
+Before running the project, verify that the required software versions are correctly installed.
+
+### Check Python Version
+
+```bash
+python --version
+```
+
+Expected Output:
+
+```text
+Python 3.10.x
+```
+
+### Check TensorFlow Version
+
+```python
+import tensorflow as tf
+
+print(tf.__version__)
+```
+
+Expected Output:
+
+```text
+2.15.0
+```
+
+### Check FastAPI Version
+
+```bash
+python -c "import fastapi; print(fastapi.__version__)"
+```
+
+### Check NumPy Version
+
+```bash
+python -c "import numpy; print(numpy.__version__)"
+```
+
+---
+
+## Development Environment
+
+The project was developed and tested using the following environment.
+
+| Software | Version |
+|----------|---------|
+| Python | 3.10.x |
+| TensorFlow | 2.15.0 |
+| TensorFlow Metal | Latest Compatible |
+| FastAPI | Latest Compatible |
+| Uvicorn | Latest Compatible |
+| NumPy | Latest Compatible |
+| Pillow | Latest Compatible |
+| Scikit-learn | Latest Compatible |
+| Operating System | macOS (Apple Silicon) |
+
+---
+
 ## Training
+
+Train the model using:
 
 ```bash
 python train_model.py
@@ -217,6 +281,8 @@ best_wire_model.keras
 
 ## Evaluation
 
+Evaluate the trained model using:
+
 ```bash
 python evaluate_model.py
 ```
@@ -228,16 +294,19 @@ This generates:
 - Recall
 - F1 Score
 - Confusion Matrix
+- Classification Report
 
 ---
 
-## Run API Server
+## Running the API
+
+Start the FastAPI server:
 
 ```bash
 uvicorn app:app --reload
 ```
 
-API URL:
+The API will be available at:
 
 ```text
 http://127.0.0.1:8000
@@ -259,11 +328,11 @@ GET /status
 POST /predict
 ```
 
-Input:
+**Input**
 
 - Image File
 
-Output:
+**Sample Response**
 
 ```json
 {
@@ -281,6 +350,7 @@ Output:
 - TensorFlow Metal
 - MobileNetV2
 - FastAPI
+- Uvicorn
 - NumPy
 - Pillow
 - Scikit-learn
@@ -292,13 +362,13 @@ Output:
 
 ## Future Improvements
 
-- Larger industrial dataset collection
+- Expand the industrial dataset
 - Multi-class defect classification
-- Defect localization using Object Detection
-- Defect segmentation using U-Net
+- Object detection for defect localization
+- Semantic segmentation using U-Net
 - Raspberry Pi deployment
-- Real-time factory integration
 - Edge AI optimization
+- Real-time industrial production line integration
 
 ---
 
@@ -306,9 +376,9 @@ Output:
 
 **Tanishq Jadhav**
 
-B.Tech Student Computer Science Engineering (Artificial Intelligence & Machine Learning)
+B.Tech – Computer Science Engineering (Artificial Intelligence & Machine Learning)
 
-Project: Wire Defect Detection using Transfer Learning
+**Project:** Wire Defect Detection using Transfer Learning (Version 2)
 
 ---
 
