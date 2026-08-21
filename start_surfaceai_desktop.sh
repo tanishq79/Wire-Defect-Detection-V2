@@ -5,6 +5,7 @@ APP_DIR="${SURFACEAI_APP_DIR:-$HOME/Desktop/Wire-Defect-Detection-V2}"
 BRANCH="${SURFACEAI_BRANCH:-main}"
 URL="http://127.0.0.1:8000"
 KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
+UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
 
 on_error() {
   local code=$?
@@ -23,11 +24,13 @@ echo "SurfaceAI starting..."
 echo "Project: $APP_DIR"
 echo "Branch:  $BRANCH"
 
-if command -v git >/dev/null 2>&1; then
+if [ "$UPDATE_ON_START" = "1" ] && command -v git >/dev/null 2>&1; then
   echo "Checking for updates..."
   git fetch origin
   git checkout "$BRANCH"
   git pull --ff-only origin "$BRANCH"
+else
+  echo "Using the installed project version (automatic Git updates disabled)."
 fi
 
 if [ ! -x ".venv/bin/python" ]; then

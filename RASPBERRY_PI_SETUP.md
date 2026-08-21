@@ -81,10 +81,11 @@ After that, double-click `SurfaceAI` on the Raspberry Pi desktop.
 
 The launcher will:
 
-- pull the latest `main` branch
 - start the FastAPI server using `.venv`
 - open the browser at `http://127.0.0.1:8000`
 - keep a terminal open for logs and errors
+
+It deliberately does not update Git automatically at boot, so a network problem or a local change cannot prevent the inspection app from opening. Update manually with `git pull --ff-only origin main` when you choose.
 
 ### Start automatically in full-screen kiosk mode
 
