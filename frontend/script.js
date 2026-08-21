@@ -21,6 +21,8 @@ let lastResult = null;      // last prediction result for single PDF export
 let activeSourceName = "";
 let cameraPreviewActive = false;
 let previewRestartTimer = null;
+let hardwareCaptureId = null;
+let completedHardwareCaptureId = null;
 let tuningState = {
     brightness: 0,
     contrast: 0,
@@ -385,6 +387,40 @@ async function captureCamera() {
     } finally {
         markCapturePress(false);
         stopLoader();
+    }
+}
+
+async function pollHardwareButton() {
+    try {
+        const res = await fetch(`${API_BASE}/hardware-button/status`, { signal: AbortSignal.timeout(4000) });
+        if (!res.ok) return;
+        const event = (await res.json()).last_event;
+        if (!event) return;
+
+        if (event.id !== hardwareCaptureId) {
+            hardwareCaptureId = event.id;
+            resetPreviewForRemoteSource("hardware_button_capture");
+            markCapturePress(true);
+            startLoader();
+        }
+        if (event.state === "complete" && event.result && event.id !== completedHardwareCaptureId) {
+            const result = event.result;
+            completedHardwareCaptureId = event.id;
+            if (result.path) {
+                activeSourceName = result.path;
+                document.getElementById("storedPath").value = result.path;
+            }
+            applyPredictionResult(result, result.path || "hardware_button_capture");
+            markCapturePress(false);
+            stopLoader();
+        } else if (event.state === "failed" && event.id !== completedHardwareCaptureId) {
+            completedHardwareCaptureId = event.id;
+            markCapturePress(false);
+            stopLoader();
+            console.error(`Hardware button capture failed: ${event.error || "unknown error"}`);
+        }
+    } catch {
+        // The dashboard can also run without a connected Raspberry Pi GPIO button.
     }
 }
 
@@ -1115,6 +1151,8 @@ function clearSession() {
 }
 
 setInspectionState("neutral");
+pollHardwareButton();
+setInterval(pollHardwareButton, 750);
 setTimeout(() => {
     startCameraPreview();
 }, 800);

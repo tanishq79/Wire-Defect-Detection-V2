@@ -118,6 +118,8 @@ PREVIEW_HEIGHT = int(os.getenv("WIRE_PREVIEW_HEIGHT", "360"))
 STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "8"))))
 STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "68"))))
 CAPTURE_MODE = os.getenv("WIRE_CAPTURE_MODE", "preview").strip().lower()
+GPIO_BUTTON_PIN = int(os.getenv("WIRE_BUTTON_GPIO", "23"))
+GPIO_BUTTON_ENABLED = os.getenv("WIRE_BUTTON_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -519,6 +521,84 @@ def capture_from_picamera2() -> Path:
     return camera_manager.capture_image()
 
 
+def capture_and_inspect(processing: Optional[dict] = None) -> dict:
+    """Capture a still, run the model, and record the inspection."""
+    image_path = capture_from_picamera2()
+    img = open_image_from_path(image_path)
+    processing = processing or build_processing_settings()
+    result = predict_image(img, processing)
+    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
+        processed_img, _ = prepare_image_for_model(img, processing)
+        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
+    result["source"] = "camera"
+    result["path"] = str(image_path)
+    result["log"] = log_inspection(result, "camera", str(image_path))
+    return result
+
+
+class HardwareCaptureButton:
+    """Optional GPIO button that invokes the same capture-and-inspect workflow."""
+
+    def __init__(self, pin: int):
+        self.pin = pin
+        self.button = None
+        self.last_event = None
+        self.last_error = None
+        self._capture_lock = threading.Lock()
+        self._event_lock = threading.Lock()
+
+    def start(self):
+        if not GPIO_BUTTON_ENABLED:
+            print("Hardware capture button disabled by WIRE_BUTTON_ENABLED", flush=True)
+            return
+        if platform.system() != "Linux":
+            print("Hardware capture button is only available on Raspberry Pi/Linux", flush=True)
+            return
+        try:
+            from gpiozero import Button
+            # Button wiring: GPIO23 (physical pin 16) to GND.
+            self.button = Button(self.pin, pull_up=True, bounce_time=0.1)
+            self.button.when_pressed = self._on_press
+            print(f"Hardware capture button ready on GPIO{self.pin} (physical pin 16)", flush=True)
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"Hardware capture button unavailable: {exc}", flush=True)
+
+    def _on_press(self):
+        if not self._capture_lock.acquire(blocking=False):
+            print("Hardware button press ignored: capture already in progress", flush=True)
+            return
+        event_id = str(uuid.uuid4())
+        with self._event_lock:
+            self.last_event = {"id": event_id, "state": "capturing", "started_at": datetime.now(timezone.utc).isoformat()}
+            self.last_error = None
+        threading.Thread(target=self._capture, args=(event_id,), daemon=True).start()
+
+    def _capture(self, event_id: str):
+        try:
+            print("Hardware button pressed: capturing wire image", flush=True)
+            result = capture_and_inspect()
+            with self._event_lock:
+                self.last_event = {"id": event_id, "state": "complete", "completed_at": datetime.now(timezone.utc).isoformat(), "result": result}
+            print(f"Hardware capture complete: {result['path']}", flush=True)
+        except Exception as exc:
+            self.last_error = str(exc)
+            with self._event_lock:
+                self.last_event = {"id": event_id, "state": "failed", "completed_at": datetime.now(timezone.utc).isoformat(), "error": str(exc)}
+            print(f"Hardware capture failed: {exc}", flush=True)
+        finally:
+            self._capture_lock.release()
+
+    def status(self) -> dict:
+        with self._event_lock:
+            event = dict(self.last_event) if self.last_event else None
+        return {"enabled": GPIO_BUTTON_ENABLED, "available": self.button is not None, "pin": self.pin, "physical_pin": 16, "last_event": event, "error": self.last_error}
+
+
+hardware_capture_button = HardwareCaptureButton(GPIO_BUTTON_PIN)
+hardware_capture_button.start()
+
+
 def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
     while True:
         try:
@@ -626,17 +706,13 @@ async def capture(
     sharpness: float = 0,
     mask_strength: float = 0,
 ):
-    image_path = capture_from_picamera2()
-    img = open_image_from_path(image_path)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    result = predict_image(img, processing)
-    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
-        processed_img, _ = prepare_image_for_model(img, processing)
-        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
-    result["source"] = "camera"
-    result["path"] = str(image_path)
-    result["log"] = log_inspection(result, "camera", str(image_path))
-    return result
+    return capture_and_inspect(processing)
+
+
+@app.get("/hardware-button/status")
+async def hardware_button_status():
+    return hardware_capture_button.status()
 
 
 @app.get("/camera/status")

@@ -33,7 +33,7 @@ Expected result for the current project:
 
 ```bash
 sudo apt update
-sudo apt install -y git python3-venv python3-pip python3-picamera2 libatlas-base-dev libopenblas-dev libjpeg-dev zlib1g-dev
+sudo apt install -y git python3-venv python3-pip python3-picamera2 python3-gpiozero libatlas-base-dev libopenblas-dev libjpeg-dev zlib1g-dev
 
 git clone https://github.com/tanishq79/Wire-Defect-Detection-V2.git
 cd Wire-Defect-Detection-V2
@@ -92,6 +92,7 @@ The launcher will:
 - Enter a stored image path in the dashboard and click `Inspect`.
 - Click `Start Preview` to view the live Raspberry Pi HQ camera feed.
 - Click `Capture & Inspect` to save a full-resolution camera image and run prediction.
+- Press the physical button wired between GPIO23 (physical pin 16) and GND to capture and inspect without touching the screen. Its result appears in the dashboard automatically.
 
 By default, relative stored-image paths are resolved under `images/`. Override this before starting the API:
 
