@@ -4,6 +4,7 @@ set -euo pipefail
 APP_DIR="${SURFACEAI_APP_DIR:-$HOME/Desktop/Wire-Defect-Detection-V2}"
 BRANCH="${SURFACEAI_BRANCH:-main}"
 URL="http://127.0.0.1:8000"
+KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
 
 on_error() {
   local code=$?
@@ -54,10 +55,15 @@ for _ in $(seq 1 30); do
 done
 
 echo "Opening $URL"
+CHROMIUM_FLAGS=("$URL" "--no-first-run" "--disable-session-crashed-bubble")
+if [ "$KIOSK_MODE" = "1" ]; then
+  CHROMIUM_FLAGS+=("--kiosk" "--start-fullscreen")
+fi
+
 if command -v chromium-browser >/dev/null 2>&1; then
-  chromium-browser "$URL" >/dev/null 2>&1 &
+  chromium-browser "${CHROMIUM_FLAGS[@]}" >/dev/null 2>&1 &
 elif command -v chromium >/dev/null 2>&1; then
-  chromium "$URL" >/dev/null 2>&1 &
+  chromium "${CHROMIUM_FLAGS[@]}" >/dev/null 2>&1 &
 elif command -v xdg-open >/dev/null 2>&1; then
   xdg-open "$URL" >/dev/null 2>&1 &
 else
@@ -65,5 +71,8 @@ else
 fi
 
 echo "SurfaceAI is running. Keep this window open while using the app."
+if [ "$KIOSK_MODE" = "1" ]; then
+  echo "Kiosk mode is enabled. Press Alt+F4 to leave Chromium."
+fi
 echo "Press Ctrl+C here only when you want to stop the server."
 wait

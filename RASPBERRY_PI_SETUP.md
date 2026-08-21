@@ -86,6 +86,20 @@ The launcher will:
 - open the browser at `http://127.0.0.1:8000`
 - keep a terminal open for logs and errors
 
+### Start automatically in full-screen kiosk mode
+
+The same installer enables autostart. After running it once, SurfaceAI starts whenever the Raspberry Pi boots to the desktop, and Chromium opens with no browser controls in full-screen kiosk mode. Restart the Pi to test it:
+
+```bash
+sudo reboot
+```
+
+Press `Alt+F4` to leave Chromium if you need the desktop. To turn off autostart later:
+
+```bash
+rm ~/.config/autostart/SurfaceAI.desktop
+```
+
 ## 4. Input Modes
 
 - Upload an image through the dashboard and click `Run Inspection`.
