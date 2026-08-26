@@ -111,6 +111,7 @@ INSPECTION_DIR = Path(os.getenv("WIRE_INSPECTION_DIR", "inspection_data")).resol
 UPLOAD_DIR = INSPECTION_DIR / "uploads"
 PROCESSED_DIR = INSPECTION_DIR / "processed"
 CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
+<<<<<<< HEAD
 # Production inspection captures are fixed at this resolution. Keeping these
 # constants non-configurable prevents a launcher environment from silently
 # changing the resolution of stored evidence images.
@@ -123,6 +124,15 @@ STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", 
 # The live stream uses the lightweight preview configuration, but every
 # inspection capture uses the dedicated 1600x1200 still configuration.
 CAPTURE_MODE = "still"
+=======
+STILL_WIDTH = int(os.getenv("WIRE_STILL_WIDTH", "1600"))
+STILL_HEIGHT = int(os.getenv("WIRE_STILL_HEIGHT", "1200"))
+PREVIEW_WIDTH = int(os.getenv("WIRE_PREVIEW_WIDTH", "640"))
+PREVIEW_HEIGHT = int(os.getenv("WIRE_PREVIEW_HEIGHT", "360"))
+STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "8"))))
+STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "68"))))
+CAPTURE_MODE = os.getenv("WIRE_CAPTURE_MODE", "preview").strip().lower()
+>>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 GPIO_BUTTON_PIN = int(os.getenv("WIRE_BUTTON_GPIO", "23"))
 GPIO_BUTTON_ENABLED = os.getenv("WIRE_BUTTON_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
@@ -486,13 +496,24 @@ class CameraManager:
         filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".jpg"
         output_path = CAPTURE_DIR / filename
 
+<<<<<<< HEAD
         with self.lock:
             still_config = self._create_camera_config(self.picam2, "still")
             image_array = self.picam2.switch_mode_and_capture_array(still_config)
+=======
+        if CAPTURE_MODE == "still":
+            with self.lock:
+                still_config = self._create_camera_config(self.picam2, "still")
+                image_array = self.picam2.switch_mode_and_capture_array(still_config)
+        else:
+            with self.lock:
+                image_array = self.picam2.capture_array()
+>>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 
         if image_array.ndim == 3 and image_array.shape[2] == 4:
             image_array = image_array[:, :, :3]
 
+<<<<<<< HEAD
         actual_size = (int(image_array.shape[1]), int(image_array.shape[0]))
         if actual_size != self.still_size:
             raise RuntimeError(
@@ -500,6 +521,8 @@ class CameraManager:
                 f"expected {self.still_size[0]}x{self.still_size[1]}. Image was not saved."
             )
 
+=======
+>>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
         Image.fromarray(image_array).convert("RGB").save(output_path, format="JPEG", quality=94)
         return output_path
 

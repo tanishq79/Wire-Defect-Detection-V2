@@ -106,7 +106,11 @@ rm ~/.config/autostart/SurfaceAI.desktop
 - Upload an image through the dashboard and click `Run Inspection`.
 - Enter a stored image path in the dashboard and click `Inspect`.
 - Click `Start Preview` to view the live Raspberry Pi HQ camera feed.
+<<<<<<< HEAD
 - Click `Capture & Inspect` to capture and save a 1600 x 1200 still image, then run prediction. The saved image remains 1600 x 1200; a separate in-memory copy is resized to 224 x 224 for the model.
+=======
+- Click `Capture & Inspect` to save a full-resolution camera image and run prediction.
+>>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 - Press the physical button wired between GPIO23 (physical pin 16) and GND to capture and inspect without touching the screen. Its result appears in the dashboard automatically.
 
 By default, relative stored-image paths are resolved under `images/`. Override this before starting the API:
@@ -122,8 +126,11 @@ Camera captures are saved by default to:
 ~/Desktop/CapturedImages
 ```
 
+<<<<<<< HEAD
 The live preview uses 640 x 480 for responsiveness and to match the 4:3 aspect ratio of the stored image. Both the dashboard capture button and the physical GPIO button use the separate 1600 x 1200 still-capture path.
 
+=======
+>>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 Override this before starting the API:
 
 ```bash
