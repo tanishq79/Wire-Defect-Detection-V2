@@ -300,6 +300,11 @@ This generates:
 
 ## Running the API
 
+Runtime inspection images use one main `images/` folder containing `1600x1200/`,
+`640x320/`, and `224x224/`. Upload, stored-path, camera, and GPIO inspections all
+save linked variants there. See [Image storage and compatibility](IMAGE_STORAGE.md)
+for configuration, existing-data handling, and API details.
+
 Start the FastAPI server:
 
 ```bash

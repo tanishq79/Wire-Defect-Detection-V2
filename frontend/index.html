@@ -87,6 +87,10 @@
                         <span id="verdictLabel">Live Review</span>
                         <strong id="verdictTitle">Awaiting Capture</strong>
                         <small id="verdictSubtitle">Align the wire in view, then capture for inspection.</small>
+                        <div class="saved-image-links">
+                            <a id="storedPreviewLink" target="_blank" rel="noopener" hidden>Saved 640 × 320 preview</a>
+                            <a id="evidenceLink" target="_blank" rel="noopener" hidden>Open 1600 × 1200 evidence</a>
+                        </div>
                     </div>
                     <div class="score-stack">
                         <div class="score-pill good"><span>Good</span><strong id="scoreGood">--%</strong></div>
@@ -166,7 +170,7 @@
                     <button class="drawer-btn" onclick="document.getElementById('fileElem').click()">Select Image</button>
                     <button class="drawer-btn" id="runBtn" onclick="predict()">Inspect Selected</button>
                     <div class="preview-wrap" id="previewWrap">
-                        <img id="previewImage"/>
+                        <img id="previewImage" alt="Inspection preview (640 by 320 pixels)">
                     </div>
                     <div id="drop-area" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)"></div>
                     <div class="source-tools">

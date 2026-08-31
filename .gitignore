@@ -6,3 +6,5 @@ __pycache__/
 *.keras
 .DS_Store
 inspection_data/
+images/
+.pytest_cache/

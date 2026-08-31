@@ -106,37 +106,41 @@ rm ~/.config/autostart/SurfaceAI.desktop
 - Upload an image through the dashboard and click `Run Inspection`.
 - Enter a stored image path in the dashboard and click `Inspect`.
 - Click `Start Preview` to view the live Raspberry Pi HQ camera feed.
-<<<<<<< HEAD
-- Click `Capture & Inspect` to capture and save a 1600 x 1200 still image, then run prediction. The saved image remains 1600 x 1200; a separate in-memory copy is resized to 224 x 224 for the model.
-=======
-- Click `Capture & Inspect` to save a full-resolution camera image and run prediction.
->>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
+- Click `Capture & Inspect` to capture a 1600 x 1200 still and save all three image variants before running prediction from the saved 224 x 224 input.
 - Press the physical button wired between GPIO23 (physical pin 16) and GND to capture and inspect without touching the screen. Its result appears in the dashboard automatically.
 
-By default, relative stored-image paths are resolved under `images/`. Override this before starting the API:
+All new inspection images live in one main folder, `images/` beside `app.py`:
+
+```text
+images/
+├── 1600x1200/   # evidence
+├── 640x320/     # processed dashboard previews
+└── 224x224/     # processed model inputs
+```
+
+Each inspection creates three lossless PNGs with the same unique filename. The
+model reads its saved 224 x 224 file. The dashboard retrieves the 640 x 320 file
+and offers a link to the 1600 x 1200 evidence. Uploads and stored-path inspections
+use the same flow as both camera capture buttons.
+
+Relative image paths resolve under this main folder; a bare generated filename
+also resolves in `1600x1200/`. Absolute legacy paths are still accepted.
+Override the main folder before starting the API:
 
 ```bash
 export WIRE_IMAGE_ROOT=/home/pi/wire_images
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Camera captures are saved by default to:
+`WIRE_CAPTURE_DIR` no longer controls a separate output directory. If your launcher
+sets it, replace it with `WIRE_IMAGE_ROOT` to move all three folders together.
+`WIRE_INSPECTION_DIR` still controls JSONL history, separately from image files.
 
-```text
-~/Desktop/CapturedImages
-```
-
-<<<<<<< HEAD
-The live preview uses 640 x 480 for responsiveness and to match the 4:3 aspect ratio of the stored image. Both the dashboard capture button and the physical GPIO button use the separate 1600 x 1200 still-capture path.
-
-=======
->>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
-Override this before starting the API:
-
-```bash
-export WIRE_CAPTURE_DIR=/home/pi/Desktop/CapturedImages
-./run_pi.sh
-```
+The live camera stream remains in memory, using 640 x 480 by default; it does not
+save every frame. The saved dashboard preview is always exactly 640 x 320, with
+padding to retain the entire image. Evidence is fitted to 1600 x 1200 with padding
+where needed; camera stills already match that size. Model input retains the
+existing direct 224 x 224 resize and enhancement settings.
 
 Camera endpoints:
 
@@ -145,6 +149,7 @@ GET  /camera/status
 GET  /camera/stream
 POST /capture
 POST /camera/stop
+GET  /images/{resolution}/{filename}
 ```
 
 ## 5. Saved Inspection Records
@@ -155,11 +160,15 @@ Each inspection is logged to:
 inspection_data/inspection_log.jsonl
 ```
 
-Uploaded images are copied to:
+No new images are written to `inspection_data/uploads/`,
+`inspection_data/processed/`, or `~/Desktop/CapturedImages`. Old files and history
+are not deleted or bulk-converted. To inspect an old image, submit its absolute
+path with `Inspect Path`; this creates a new three-resolution bundle while
+preserving the original file and old history entries.
 
-```text
-inspection_data/uploads/
-```
+New log entries include all three image paths/URLs and the processing settings.
+Existing log entries remain readable. See [IMAGE_STORAGE.md](IMAGE_STORAGE.md)
+for API fields, storage details, and verification commands.
 
 Recent records can be checked from the API:
 

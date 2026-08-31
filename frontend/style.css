@@ -327,6 +327,9 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     background: #050506;
 }
 
+.saved-image-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.saved-image-links a { color: #7dd3fc; font-size: 12px; }
+
 .preview-shell img {
     display: none;
     width: 100%;

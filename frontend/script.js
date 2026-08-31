@@ -14,6 +14,7 @@ let total = 0, defects = 0, ok = 0;
 let counts = { defected_wire: 0, ok_wire: 0 };
 let historyLog = [];        // { prediction, confidence, time, fileName, color, verdict }
 let selectedFile = null;
+let selectedObjectUrl = null;
 let loaderInterval = null;
 let sessionStart = Date.now();
 let systemInfo = {};        // filled by /status poll
@@ -172,7 +173,11 @@ function openGalleryUpload() {
 function loadFile(file, autoInspect = false) {
     selectedFile = file;
     activeSourceName = file.name;
+    if (selectedObjectUrl) URL.revokeObjectURL(selectedObjectUrl);
     const objectUrl = URL.createObjectURL(file);
+    selectedObjectUrl = objectUrl;
+    document.getElementById("evidenceLink").hidden = true;
+    document.getElementById("storedPreviewLink").hidden = true;
     document.getElementById("previewImage").src = objectUrl;
     document.getElementById("previewWrap").style.display = "block";
     document.getElementById("resultPanel").style.display = "none";
@@ -203,6 +208,36 @@ function resetPreviewForRemoteSource(label) {
     document.getElementById("previewWrap").style.display = "none";
     document.getElementById("resultPanel").style.display = "none";
     lastResult = null;
+    document.getElementById("evidenceLink").hidden = true;
+    document.getElementById("storedPreviewLink").hidden = true;
+}
+
+function showStoredImages(data) {
+    const thumbnail = data.images?.["640x320"];
+    const evidence = data.images?.["1600x1200"];
+    const link = document.getElementById("evidenceLink");
+    const previewLink = document.getElementById("storedPreviewLink");
+    link.hidden = !evidence;
+    previewLink.hidden = !thumbnail;
+    if (evidence) link.href = `${API_BASE.replace(/\/$/, "")}${evidence.url}`;
+    // Older API responses without image URLs remain supported.
+    if (!thumbnail) return;
+    const url = `${API_BASE.replace(/\/$/, "")}${thumbnail.url}`;
+    previewLink.href = url;
+    document.getElementById("previewImage").src = url;
+    document.getElementById("previewWrap").style.display = "block";
+    if (!cameraPreviewActive) {
+        const preview = document.getElementById("cameraPreview");
+        preview.src = url;
+        preview.style.display = "block";
+        // The stored preview already includes the inspection's enhancements.
+        preview.style.filter = "";
+        document.getElementById("cameraEmpty").style.display = "none";
+    }
+    if (selectedObjectUrl) {
+        URL.revokeObjectURL(selectedObjectUrl);
+        selectedObjectUrl = null;
+    }
 }
 
 function processingParams() {
@@ -478,6 +513,7 @@ async function stopCameraPreview() {
 }
 
 function applyPredictionResult(data, sourceName) {
+    showStoredImages(data);
     const prediction = data.prediction;
     const confidence = parseFloat(parseFloat(data.confidence).toFixed(1));
     const rawScore = typeof data.raw_score === "number" ? data.raw_score : parseFloat(data.raw_score || "0");
@@ -1128,6 +1164,8 @@ updateTuningFromControls();
 
 function clearSession() {
     if (!confirm("Clear all session data? This cannot be undone.")) return;
+    document.getElementById("evidenceLink").hidden = true;
+    document.getElementById("storedPreviewLink").hidden = true;
     total = 0; defects = 0; ok = 0;
     counts = { defected_wire: 0, ok_wire: 0 };
     historyLog   = [];

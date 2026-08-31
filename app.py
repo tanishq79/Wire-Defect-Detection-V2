@@ -13,7 +13,7 @@ import zipfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +25,7 @@ from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, UnidentifiedImageError
+from image_storage import APP_DIR, IMAGE_SIZES, ImageStore, configured_path
 
 app = FastAPI(title="SurfaceAI Wire Inspection API", version="2.1")
 
@@ -92,10 +93,10 @@ def load_sanitized_keras_archive(model_path: str):
 def load_wire_model():
     install_keras_legacy_config_shims()
     try:
-        return tf.keras.models.load_model("best_wire_model.keras", compile=False, safe_mode=False)
+        return tf.keras.models.load_model(str(APP_DIR / "best_wire_model.keras"), compile=False, safe_mode=False)
     except Exception as exc:
         print(f"Standard model load failed, trying sanitized legacy load: {exc}", flush=True)
-        return load_sanitized_keras_archive("best_wire_model.keras")
+        return load_sanitized_keras_archive(str(APP_DIR / "best_wire_model.keras"))
 
 
 # Load best trained model
@@ -106,12 +107,10 @@ except Exception as exc:
     raise
 
 IMG_SIZE = 224
-IMAGE_ROOT = Path(os.getenv("WIRE_IMAGE_ROOT", "images")).resolve()
-INSPECTION_DIR = Path(os.getenv("WIRE_INSPECTION_DIR", "inspection_data")).resolve()
-UPLOAD_DIR = INSPECTION_DIR / "uploads"
-PROCESSED_DIR = INSPECTION_DIR / "processed"
-CAPTURE_DIR = Path(os.getenv("WIRE_CAPTURE_DIR", str(Path.home() / "Desktop" / "CapturedImages"))).resolve()
-<<<<<<< HEAD
+IMAGE_ROOT = configured_path("WIRE_IMAGE_ROOT", "images")
+INSPECTION_DIR = configured_path("WIRE_INSPECTION_DIR", "inspection_data")
+image_store = ImageStore(IMAGE_ROOT)
+CAPTURE_DIR = IMAGE_ROOT / "1600x1200"
 # Production inspection captures are fixed at this resolution. Keeping these
 # constants non-configurable prevents a launcher environment from silently
 # changing the resolution of stored evidence images.
@@ -124,22 +123,13 @@ STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", 
 # The live stream uses the lightweight preview configuration, but every
 # inspection capture uses the dedicated 1600x1200 still configuration.
 CAPTURE_MODE = "still"
-=======
-STILL_WIDTH = int(os.getenv("WIRE_STILL_WIDTH", "1600"))
-STILL_HEIGHT = int(os.getenv("WIRE_STILL_HEIGHT", "1200"))
-PREVIEW_WIDTH = int(os.getenv("WIRE_PREVIEW_WIDTH", "640"))
-PREVIEW_HEIGHT = int(os.getenv("WIRE_PREVIEW_HEIGHT", "360"))
-STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "8"))))
-STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "68"))))
-CAPTURE_MODE = os.getenv("WIRE_CAPTURE_MODE", "preview").strip().lower()
->>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 GPIO_BUTTON_PIN = int(os.getenv("WIRE_BUTTON_GPIO", "23"))
 GPIO_BUTTON_ENABLED = os.getenv("WIRE_BUTTON_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
-if Path("frontend").exists():
-    app.mount("/ui", StaticFiles(directory="frontend", html=True), name="frontend")
+if (APP_DIR / "frontend").exists():
+    app.mount("/ui", StaticFiles(directory=str(APP_DIR / "frontend"), html=True), name="frontend")
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -211,17 +201,11 @@ def prepare_image_for_model(img: Image.Image, settings: Optional[dict] = None):
     return processed, settings
 
 
-def save_processed_image(img: Image.Image, stem: str = "processed") -> Path:
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    safe_stem = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in stem)[:48] or "processed"
-    path = PROCESSED_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_stem}.jpg"
-    img.save(path, format="JPEG", quality=92)
-    return path
-
-
-def predict_image(img: Image.Image, processing: Optional[dict] = None):
+def predict_image(img: Image.Image, processing: Optional[dict] = None, stem: str = "inspection"):
     processed_img, processing_settings = prepare_image_for_model(img, processing)
-    img = processed_img.resize((IMG_SIZE, IMG_SIZE))
+    images = image_store.save(img, processed_img, stem)
+    # Read the saved model variant, so its pixels are the actual inference input.
+    img = open_image_from_path(Path(images["224x224"]["path"]))
 
     img_array = image.img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
@@ -237,12 +221,16 @@ def predict_image(img: Image.Image, processing: Optional[dict] = None):
         prediction = "defected_wire"
         confidence = (1 - score) * 100
 
-    return {
+    result = {
         "prediction": prediction,
         "confidence": round(confidence, 2),
         "raw_score": round(score, 4),
         "processing": processing_settings,
+        "images": images,
     }
+    if any(processing_settings.values()):
+        result["processed_path"] = images["224x224"]["path"]
+    return result
 
 
 def warm_up_model():
@@ -266,6 +254,8 @@ def log_inspection(result: dict, source: str, source_name: Optional[str] = None)
         "prediction": result["prediction"],
         "confidence": result["confidence"],
         "raw_score": result["raw_score"],
+        "processing": result.get("processing", {}),
+        "images": result.get("images", {}),
     }
     with LOG_FILE.open("a", encoding="utf-8") as log:
         log.write(json.dumps(record) + "\n")
@@ -302,17 +292,6 @@ def open_image_from_path(path: Path) -> Image.Image:
         return Image.open(path).convert("RGB")
     except UnidentifiedImageError as exc:
         raise HTTPException(status_code=400, detail=f"Image is not readable: {path}") from exc
-
-
-def save_upload(contents: bytes, filename: Optional[str]):
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = Path(filename or "").suffix.lower()
-    if suffix not in ALLOWED_IMAGE_SUFFIXES:
-        suffix = ".jpg"
-
-    saved_path = UPLOAD_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{suffix}"
-    saved_path.write_bytes(contents)
-    return saved_path
 
 
 class CameraManager:
@@ -490,30 +469,15 @@ class CameraManager:
         img.save(output, format="JPEG", quality=STREAM_JPEG_QUALITY, optimize=True)
         return output.getvalue()
 
-    def capture_image(self) -> Path:
+    def capture_image(self) -> Image.Image:
         self.start()
-        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-        filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + ".jpg"
-        output_path = CAPTURE_DIR / filename
-
-<<<<<<< HEAD
         with self.lock:
             still_config = self._create_camera_config(self.picam2, "still")
             image_array = self.picam2.switch_mode_and_capture_array(still_config)
-=======
-        if CAPTURE_MODE == "still":
-            with self.lock:
-                still_config = self._create_camera_config(self.picam2, "still")
-                image_array = self.picam2.switch_mode_and_capture_array(still_config)
-        else:
-            with self.lock:
-                image_array = self.picam2.capture_array()
->>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
 
         if image_array.ndim == 3 and image_array.shape[2] == 4:
             image_array = image_array[:, :, :3]
 
-<<<<<<< HEAD
         actual_size = (int(image_array.shape[1]), int(image_array.shape[0]))
         if actual_size != self.still_size:
             raise RuntimeError(
@@ -521,10 +485,7 @@ class CameraManager:
                 f"expected {self.still_size[0]}x{self.still_size[1]}. Image was not saved."
             )
 
-=======
->>>>>>> 1c30d2e749e35641449d5b252c6ab3f8f0004dc6
-        Image.fromarray(image_array).convert("RGB").save(output_path, format="JPEG", quality=94)
-        return output_path
+        return Image.fromarray(image_array).convert("RGB")
 
 
 camera_manager = CameraManager()
@@ -536,7 +497,9 @@ def resolve_image_path(path_value: str) -> Path:
 
     requested = Path(path_value).expanduser()
     if not requested.is_absolute():
-        requested = IMAGE_ROOT / requested
+        # Keep old relative paths usable; bare new filenames resolve to evidence.
+        candidates = [IMAGE_ROOT / requested, CAPTURE_DIR / requested]
+        requested = next((p for p in candidates if p.is_file()), candidates[0])
 
     resolved = requested.resolve()
     if not resolved.exists() or not resolved.is_file():
@@ -548,19 +511,16 @@ def resolve_image_path(path_value: str) -> Path:
     return resolved
 
 
-def capture_from_picamera2() -> Path:
+def capture_from_picamera2() -> Image.Image:
     return camera_manager.capture_image()
 
 
 def capture_and_inspect(processing: Optional[dict] = None) -> dict:
     """Capture a still, run the model, and record the inspection."""
-    image_path = capture_from_picamera2()
-    img = open_image_from_path(image_path)
+    img = capture_from_picamera2()
     processing = processing or build_processing_settings()
-    result = predict_image(img, processing)
-    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
-        processed_img, _ = prepare_image_for_model(img, processing)
-        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
+    result = predict_image(img, processing, "capture")
+    image_path = result["images"]["1600x1200"]["path"]
     result["source"] = "camera"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "camera", str(image_path))
@@ -647,7 +607,7 @@ def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
 
 @app.get("/")
 async def root():
-    if Path("frontend/index.html").exists():
+    if (APP_DIR / "frontend/index.html").exists():
         return RedirectResponse(url="/ui/")
 
     return {"message": "Wire Defect Detection API Running", "docs": "/docs"}
@@ -673,13 +633,14 @@ async def status():
         "tensorflow_version": tf.__version__,
         "gpu_available": bool(tf.config.list_physical_devices("GPU")),
         "image_root": str(IMAGE_ROOT),
+        "image_directories": {key: str(IMAGE_ROOT / key) for key in IMAGE_SIZES},
         "inspection_dir": str(INSPECTION_DIR),
         "capture_dir": str(CAPTURE_DIR),
         "camera": camera_manager.status(),
         "stream_fps": STREAM_FPS,
         "stream_jpeg_quality": STREAM_JPEG_QUALITY,
         "capture_mode": CAPTURE_MODE,
-        "ui_available": Path("frontend/index.html").exists(),
+        "ui_available": (APP_DIR / "frontend/index.html").exists(),
     }
 
 @app.post("/predict")
@@ -696,15 +657,11 @@ async def predict(
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
     img = open_image_from_bytes(contents)
-    saved_path = save_upload(contents, file.filename)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    result = predict_image(img, processing)
-    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
-        processed_img, _ = prepare_image_for_model(img, processing)
-        result["processed_path"] = str(save_processed_image(processed_img, Path(file.filename or "upload").stem))
+    result = predict_image(img, processing, Path(file.filename or "upload").stem)
     result["source"] = "upload"
     result["filename"] = file.filename
-    result["saved_path"] = str(saved_path)
+    result["saved_path"] = result["images"]["1600x1200"]["path"]
     result["log"] = log_inspection(result, "upload", file.filename)
     return result
 
@@ -720,10 +677,7 @@ async def predict_path(
     image_path = resolve_image_path(path)
     img = open_image_from_path(image_path)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    result = predict_image(img, processing)
-    if processing["mask_strength"] > 0 or any(processing[key] != 0 for key in ("brightness", "contrast", "sharpness")):
-        processed_img, _ = prepare_image_for_model(img, processing)
-        result["processed_path"] = str(save_processed_image(processed_img, image_path.stem))
+    result = predict_image(img, processing, image_path.stem)
     result["source"] = "path"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "path", str(image_path))
@@ -776,3 +730,12 @@ async def camera_stop():
 async def history(limit: int = 50):
     limit = max(1, min(limit, 500))
     return {"items": read_recent_inspections(limit), "limit": limit}
+
+
+@app.get("/images/{resolution}/{filename}")
+async def stored_image(resolution: str, filename: str):
+    try:
+        path = image_store.resolve_served_image(resolution, filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Image not found") from exc
+    return FileResponse(path)
