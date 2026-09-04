@@ -72,67 +72,247 @@
         </header>
 
         <!-- ══ PAGE: INSPECTION ═══════════════════════════════════ -->
-        <div class="page" id="page-inspection">
-            <div class="stats-row">
-                <div class="stat-card"><div class="stat-icon blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><div><div class="stat-label">Total Inspected</div><div class="stat-value" id="totalCount">0</div></div></div>
-                <div class="stat-card"><div class="stat-icon red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div><div class="stat-label">Defected Wires</div><div class="stat-value" id="defectCount">0</div></div></div>
-                <div class="stat-card"><div class="stat-icon green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-label">OK Wires</div><div class="stat-value" id="okCount">0</div></div></div>
-                <div class="stat-card"><div class="stat-icon amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div><div class="stat-label">Defect Rate</div><div class="stat-value" id="defectRate">—</div></div></div>
-            </div>
-
-            <div class="work-area">
-                <div class="inspector-col">
-                    <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Upload Wire Sample</span><span class="panel-badge">PNG / JPG / BMP</span></div>
-                        <div id="drop-area" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
-                            <input type="file" id="fileElem" hidden accept="image/*">
-                            <div class="drop-inner">
-                                <div class="drop-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
-                                <p class="drop-main">Drag & drop wire image</p>
-                                <p class="drop-sub">or click to browse files</p>
-                                <button class="btn-select" onclick="document.getElementById('fileElem').click()">Select Image</button>
+        <div class="page camera-console" id="page-inspection">
+            <div class="camera-stage state-neutral" id="cameraFrame">
+                
+                <!-- Video / Image Preview Area -->
+                <div class="preview-shell" id="previewShell">
+                    <video id="cameraVideo" autoplay playsinline muted></video>
+                    <img id="cameraPreview" alt="Inspection preview">
+                    <canvas id="captureCanvas" class="hidden-canvas"></canvas>
+                    <div class="camera-empty" id="cameraEmpty">
+                        <div class="empty-state-content">
+                            <svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            <div class="empty-title">Camera Feed Inactive</div>
+                            <div class="empty-subtitle">Click "Start Camera" or select an image to begin inspection.</div>
+                            <div class="empty-actions">
+                                <button class="hud-btn primary" onclick="toggleCameraFeed()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                    Start Live Camera
+                                </button>
+                                <button class="hud-btn" onclick="openGalleryUpload()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    Upload Wire Image
+                                </button>
                             </div>
-                        </div>
-                        <div class="preview-wrap" id="previewWrap">
-                            <img id="previewImage"/>
-                            <div class="preview-overlay"><button class="btn-change" onclick="document.getElementById('fileElem').click()">Change</button></div>
                         </div>
                     </div>
 
-                    <button class="btn-run" id="runBtn" onclick="predict()">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Run Inspection
-                        <div class="btn-shimmer"></div>
-                    </button>
+                    <!-- Alignment Reticle / HUD Grid -->
+                    <div class="focus-frame" id="focusFrame">
+                        <div class="corner-reticle top-left"></div>
+                        <div class="corner-reticle top-right"></div>
+                        <div class="corner-reticle bottom-left"></div>
+                        <div class="corner-reticle bottom-right"></div>
+                        <div class="center-guideline"></div>
+                        <div class="reticle-label">WIRE ALIGNMENT TARGET</div>
+                    </div>
+                </div>
 
-                    <div class="loader-bar" id="loaderBar"><div class="loader-fill" id="loaderFill"></div></div>
-
-                    <div class="result-panel" id="resultPanel">
-                        <div class="result-header">
-                            <div class="result-badge" id="resultBadge">—</div>
-                            <div class="result-action" id="resultAction">—</div>
+                <!-- ── FLOATING TOP HUD ────────────────────────────── -->
+                <div class="hud-topbar">
+                    <div class="hud-top-left">
+                        <div class="hud-pill brand-pill">
+                            <span class="live-beacon" id="liveBeacon"></span>
+                            <span class="hud-brand-name">SurfaceAI</span>
+                            <span class="hud-divider">/</span>
+                            <span class="hud-status-text" id="cameraStatusBadge">STANDBY</span>
                         </div>
-                        <div class="result-label">PREDICTED CLASS</div>
-                        <div class="result-class" id="predictionText">—</div>
-                        <div class="conf-row"><span class="conf-label">Confidence</span><span class="conf-value" id="confidenceText">—</span></div>
-                        <div class="confidence-bar"><div id="confidenceFill"></div></div>
-                        <p class="action-note" id="actionText"></p>
-                        <button class="btn-pdf" id="pdfBtn" onclick="exportSinglePDF()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                            Export PDF Report
+                        <div class="hud-pill info-pill">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <span id="consoleClock">--:--:--</span>
+                        </div>
+                        <div class="hud-pill model-pill" id="modelPill">
+                            <span class="dot" id="dot-hud-model"></span>
+                            <span id="hudModelName">MobileNetV2 Active</span>
+                        </div>
+                    </div>
+
+                    <div class="hud-top-right">
+                        <!-- Camera selector dropdown -->
+                        <div class="camera-select-wrap" id="cameraSelectWrap" hidden>
+                            <select id="cameraSourceSelect" onchange="changeCameraSource(this.value)" class="hud-select" title="Select Video Source"></select>
+                        </div>
+                        <button class="hud-btn-pill" id="btnDrawerOpen" onclick="toggleDrawer()" title="Toggle Operator Drawer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                            <span>Panel</span>
+                            <span class="badge-count" id="drawerBadgeCount">0</span>
                         </button>
                     </div>
                 </div>
 
-                <div class="analytics-col">
-                    <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Wire Status Distribution</span></div>
-                        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+                <!-- ── FLOATING VERDICT HUD CARD ──────────────────── -->
+                <div class="hud-verdict-card" id="verdictStrip">
+                    <div class="verdict-status-row">
+                        <span class="verdict-tag" id="verdictLabel">READY</span>
+                        <div class="verdict-conf" id="verdictConfWrap">
+                            <span id="verdictConfVal">--%</span>
+                        </div>
                     </div>
-                    <div class="panel">
-                        <div class="panel-header"><span class="panel-title">Inspection Log</span><span class="panel-badge" id="logCount">0 entries</span></div>
-                        <div class="history-list" id="historyList"><div class="history-empty">No inspections yet</div></div>
+                    <div class="verdict-title" id="verdictTitle">Awaiting Inspection</div>
+                    <div class="verdict-subtitle" id="verdictSubtitle">Place wire in alignment box and capture.</div>
+                    
+                    <div class="verdict-bar-wrap">
+                        <div class="verdict-bar" id="verdictBarFill"></div>
                     </div>
+
+                    <div class="verdict-breakdown">
+                        <div class="breakdown-item good">
+                            <span>PASS</span>
+                            <strong id="scoreGood">--%</strong>
+                        </div>
+                        <div class="breakdown-item bad">
+                            <span>DEFECT</span>
+                            <strong id="scoreDefect">--%</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── FLOATING TUNING PANEL (Collapsible) ─────────── -->
+                <div class="tuning-panel-hud hidden" id="tuningPanel">
+                    <div class="tuning-head">
+                        <span>Image Enhancements</span>
+                        <button type="button" onclick="resetTuning()">Reset</button>
+                    </div>
+                    <label class="tuning-row">
+                        <span>Brightness <strong id="valBrightness">0</strong></span>
+                        <input id="ctlBrightness" type="range" min="-50" max="50" value="0" oninput="updateTuningFromControls()">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Contrast <strong id="valContrast">0</strong></span>
+                        <input id="ctlContrast" type="range" min="-50" max="50" value="0" oninput="updateTuningFromControls()">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Sharpness <strong id="valSharpness">0</strong></span>
+                        <input id="ctlSharpness" type="range" min="0" max="100" value="0" oninput="updateTuningFromControls()">
+                    </label>
+                    <label class="tuning-row">
+                        <span>Wire Mask <strong id="valMask">0</strong></span>
+                        <input id="ctlMask" type="range" min="0" max="100" value="0" oninput="updateTuningFromControls()">
+                    </label>
+                    <div class="tuning-warning hidden" id="maskWarning"></div>
+                </div>
+
+                <!-- ── FLOATING BOTTOM TELEMETRY DOCK ─────────────── -->
+                <div class="hud-telemetry-dock">
+                    <div class="telemetry-card">
+                        <span class="telemetry-label">TOTAL</span>
+                        <span class="telemetry-val" id="totalCount">0</span>
+                    </div>
+                    <div class="telemetry-card success">
+                        <span class="telemetry-label">GOOD (PASS)</span>
+                        <span class="telemetry-val" id="okCount">0</span>
+                    </div>
+                    <div class="telemetry-card danger">
+                        <span class="telemetry-label">DEFECTS</span>
+                        <span class="telemetry-val" id="defectCount">0</span>
+                    </div>
+                    <div class="telemetry-card">
+                        <span class="telemetry-label">DEFECT RATE</span>
+                        <span class="telemetry-val" id="defectRate">0%</span>
+                    </div>
+                </div>
+
+                <!-- ── FLOATING ACTION CONTROL BAR ────────────────── -->
+                <div class="hud-action-bar">
+                    <button class="action-btn" id="btnCamToggle" onclick="toggleCameraFeed()" title="Toggle Camera Live Stream (C)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                        <span class="btn-tooltip">Camera</span>
+                    </button>
+
+                    <button class="action-btn" id="btnAutoInspect" onclick="toggleAutoInspect()" title="Toggle Continuous Auto-Inspect">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                        </svg>
+                        <span class="btn-tooltip">Auto Scan</span>
+                    </button>
+
+                    <!-- Primary Shutter Capture Button -->
+                    <button type="button" class="hud-shutter-btn" id="captureBtn" onclick="triggerInspectionCapture()" title="Inspect Wire (Spacebar)" aria-label="Capture wire image">
+                        <span class="shutter-core"></span>
+                        <span class="shutter-ring"></span>
+                    </button>
+
+                    <button class="action-btn" onclick="openGalleryUpload()" title="Upload Image File (U)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <span class="btn-tooltip">Upload</span>
+                    </button>
+
+                    <button class="action-btn" id="btnTuningToggle" onclick="toggleTuningPanel()" title="Toggle Image Tuning">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                            <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                            <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+                        </svg>
+                        <span class="btn-tooltip">Tuning</span>
+                    </button>
+                </div>
+
+                <!-- Loader Bar -->
+                <div class="loader-bar" id="loaderBar"><div class="loader-fill" id="loaderFill"></div></div>
+            </div>
+
+            <!-- ── SLIDE-OVER OPERATOR DRAWER ─────────────────────── -->
+            <div class="operator-drawer" id="operatorDrawer">
+                <div class="drawer-header">
+                    <div class="drawer-title">Inspection Operator Panel</div>
+                    <button class="drawer-close-btn" onclick="toggleDrawer(false)" title="Close Panel">&times;</button>
+                </div>
+
+                <div class="drawer-body">
+                    <!-- Image Source & Upload -->
+                    <div class="drawer-section">
+                        <div class="section-heading">Source Image</div>
+                        <input type="file" id="fileElem" hidden accept="image/*">
+                        <div class="drop-zone" id="drop-area" onclick="document.getElementById('fileElem').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span>Drop image here or <u>browse</u></span>
+                        </div>
+                        <div class="preview-wrap" id="previewWrap">
+                            <img id="previewImage" alt="Inspection preview">
+                        </div>
+                        <button class="drawer-btn primary" id="runBtn" onclick="predict()">Inspect Current Image</button>
+                    </div>
+
+                    <!-- Latest Result Details -->
+                    <div class="drawer-section result-panel" id="resultPanel">
+                        <div class="section-heading">Result Details</div>
+                        <div class="result-class-badge" id="resultBadge">--</div>
+                        <div class="conf-row">
+                            <span>Confidence</span>
+                            <strong id="confidenceText">--%</strong>
+                        </div>
+                        <div class="confidence-bar"><div id="confidenceFill"></div></div>
+                        <p class="action-note" id="actionText"></p>
+                        <button class="drawer-btn" onclick="exportSinglePDF()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Export PDF Report
+                        </button>
+                    </div>
+
+                    <!-- Recent Inspections History -->
+                    <div class="drawer-section">
+                        <div class="section-heading-row">
+                            <div class="section-heading">Recent Inspections</div>
+                            <span class="panel-badge" id="logCount">0 entries</span>
+                        </div>
+                        <div class="history-list" id="historyList">
+                            <div class="history-empty">No inspections yet</div>
+                        </div>
+                    </div>
+
+                    <canvas id="chart" class="hidden-chart"></canvas>
                 </div>
             </div>
         </div>
@@ -276,9 +456,9 @@
                     <div class="settings-row">
                         <label class="settings-label">Minimum Accept Confidence</label>
                         <div class="slider-row">
-                            <input type="range" min="0" max="100" value="50" class="settings-slider" id="cfg-minConf"
+                            <input type="range" min="0" max="100" value="70" class="settings-slider" id="cfg-minConf"
                                    oninput="document.getElementById('cfg-minConfVal').textContent=this.value+'%'">
-                            <span class="slider-val" id="cfg-minConfVal">50%</span>
+                            <span class="slider-val" id="cfg-minConfVal">70%</span>
                         </div>
                         <p class="settings-hint">Results below this value are flagged with a low-confidence warning.</p>
                     </div>
