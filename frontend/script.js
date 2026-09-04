@@ -111,9 +111,12 @@ async function pollStatus() {
         const data = await res.json();
         systemInfo = data;
 
-        setDot("dot-model", "green");
-        document.getElementById("status-model").textContent = data.model_name + " Active";
-        setText("consoleModelStatus", data.model_name);
+        const modelReady = data.model_ready !== false && data.model_loaded !== false;
+        setDot("dot-model", modelReady ? "green" : "amber");
+        document.getElementById("status-model").textContent = modelReady
+            ? data.model_name + " Active"
+            : "Model Error";
+        setText("consoleModelStatus", modelReady ? data.model_name : "Model Error");
 
         setDot("dot-api", "green");
         document.getElementById("status-api").textContent = "API Connected";

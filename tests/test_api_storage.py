@@ -206,6 +206,9 @@ def test_status_ui_history_and_routes(api):
     module, client, _ = api
     module.camera_manager.picam2 = FakeCamera()
     status = client.get("/status").json()
+    assert status["model_loaded"] is True
+    assert status["model_ready"] is True
+    assert status["model_error"] is None
     assert status["capture_dir"] == str(module.IMAGE_ROOT / "1600x1200")
     assert set(status["image_directories"]) == {"1600x1200", "640x320", "224x224"}
     assert status["capture_mode"] == "still"

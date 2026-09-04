@@ -248,11 +248,15 @@ def warm_up_model():
     dummy = np.zeros((1, IMG_SIZE, IMG_SIZE, 3), dtype=np.float32)
     try:
         model.predict(dummy, verbose=0)
-    except Exception:
-        pass
+        print("SurfaceAI model loaded and warm-up prediction passed", flush=True)
+        return None
+    except Exception as exc:
+        error = f"Model warm-up prediction failed: {exc}"
+        print(error, flush=True)
+        return error
 
 
-warm_up_model()
+MODEL_WARMUP_ERROR = warm_up_model()
 
 
 def log_inspection(result: dict, source: str, source_name: Optional[str] = None):
@@ -651,7 +655,9 @@ async def api_info():
 async def status():
     return {
         "model_name": "MobileNetV2",
-        "model_loaded": True,
+        "model_loaded": model is not None,
+        "model_ready": model is not None and MODEL_WARMUP_ERROR is None,
+        "model_error": MODEL_WARMUP_ERROR,
         "api_connected": True,
         "device": platform.machine(),
         "platform": platform.platform(),
