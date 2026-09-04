@@ -581,12 +581,26 @@ class HardwareCaptureButton:
             print("Hardware button pressed: capturing wire image", flush=True)
             result = capture_and_inspect()
             with self._event_lock:
-                self.last_event = {"id": event_id, "state": "complete", "completed_at": datetime.now(timezone.utc).isoformat(), "result": result}
+                started_at = (self.last_event or {}).get("started_at")
+                self.last_event = {
+                    "id": event_id,
+                    "state": "complete",
+                    "started_at": started_at,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "result": result,
+                }
             print(f"Hardware capture complete: {result['path']}", flush=True)
         except Exception as exc:
             self.last_error = str(exc)
             with self._event_lock:
-                self.last_event = {"id": event_id, "state": "failed", "completed_at": datetime.now(timezone.utc).isoformat(), "error": str(exc)}
+                started_at = (self.last_event or {}).get("started_at")
+                self.last_event = {
+                    "id": event_id,
+                    "state": "failed",
+                    "started_at": started_at,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "error": str(exc),
+                }
             print(f"Hardware capture failed: {exc}", flush=True)
         finally:
             self._capture_lock.release()

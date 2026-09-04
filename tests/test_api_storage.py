@@ -156,6 +156,8 @@ def test_camera_and_hardware_use_same_store(api):
     button._capture("button-test")
     event = client.get("/hardware-button/status").json()["last_event"]
     assert event["state"] == "complete"
+    assert event["started_at"] is not None
+    assert event["completed_at"] is not None
     assert_bundle(client, event["result"])
     assert event["result"]["path"] != result["path"]
     # Live streaming remains in memory; it must not fill the image store.

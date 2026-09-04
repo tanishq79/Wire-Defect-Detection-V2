@@ -61,4 +61,6 @@ assert.match(source, /if \(hardwarePollInFlight\) return;/);
 assert.match(source, /setInterval\(pollHardwareButton, 200\)/);
 assert.doesNotMatch(source, /AbortSignal\.timeout/);
 assert.match(source, /function fetchWithTimeout\(/);
+assert.match(source, /Only acknowledge the event after the result was applied/);
+assert.ok(source.indexOf('updateVerdictDisplay(finalPrediction') < source.indexOf('showStoredImages(data);', source.indexOf('function applyPredictionResult')));
 console.log('Touchscreen and physical-button feedback contracts passed.');

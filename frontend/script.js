@@ -467,12 +467,14 @@ async function pollHardwareButton() {
         }
         if (event.state === "complete" && event.result && event.id !== completedHardwareCaptureId) {
             const result = event.result;
-            completedHardwareCaptureId = event.id;
             if (result.path) {
                 activeSourceName = result.path;
                 document.getElementById("storedPath").value = result.path;
             }
             applyPredictionResult(result, result.path || "hardware_button_capture");
+            // Only acknowledge the event after the result was applied. If a
+            // transient UI error occurs, the next poll retries instead of losing it.
+            completedHardwareCaptureId = event.id;
             markCapturePress(false);
             stopLoader();
         } else if (event.state === "failed" && event.id !== completedHardwareCaptureId) {
@@ -559,10 +561,12 @@ async function stopCameraPreview() {
 }
 
 function applyPredictionResult(data, sourceName) {
-    showStoredImages(data);
     const prediction = data.prediction;
     const confidence = parseFloat(parseFloat(data.confidence).toFixed(1));
     const rawScore = typeof data.raw_score === "number" ? data.raw_score : parseFloat(data.raw_score || "0");
+    if (!prediction || !Number.isFinite(confidence) || !Number.isFinite(rawScore)) {
+        throw new Error("The inspection API returned an incomplete prediction result.");
+    }
     const goodScore = Math.max(0, Math.min(100, rawScore * 100));
     const defectScore = Math.max(0, Math.min(100, (1 - rawScore) * 100));
     const reviewScore = Math.max(0, Math.min(100, 100 - Math.abs(rawScore - 0.5) * 200));
@@ -573,6 +577,15 @@ function applyPredictionResult(data, sourceName) {
     const dateStr    = new Date().toLocaleDateString("en-CA");   // YYYY-MM-DD
     const isLowConf  = confidence < MIN_CONF;
     const fileName   = sourceName || activeSourceName || data.filename || data.path || "camera_capture";
+
+    // Show the main verdict first. Optional saved-image rendering or analytics
+    // must never prevent the operator from seeing the ML result.
+    updateVerdictDisplay(finalPrediction, confidence, goodScore, reviewScore, defectScore);
+    try {
+        showStoredImages(data);
+    } catch (err) {
+        console.warn("Prediction succeeded, but the saved preview could not be displayed:", err);
+    }
 
     // ── Result panel ──────────────────────────────────────────
     const panel = document.getElementById("resultPanel");
@@ -599,14 +612,13 @@ function applyPredictionResult(data, sourceName) {
     let noteText = m.action;
     if (isLowConf) noteText += "\nCapture another frame or send the sample for manual inspection.";
     document.getElementById("actionText").textContent = noteText;
-    updateVerdictDisplay(finalPrediction, confidence, goodScore, reviewScore, defectScore);
 
     // ── Save last result for single PDF ───────────────────────
     lastResult = { prediction: finalPrediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label };
 
     // ── Session counters ──────────────────────────────────────
     total++;
-    counts[prediction]++;
+    counts[prediction] = (counts[prediction] || 0) + 1;
     if (prediction === "ok_wire") ok++; else defects++;
 
     document.getElementById("totalCount").textContent  = total;
@@ -616,8 +628,12 @@ function applyPredictionResult(data, sourceName) {
 
     // ── History ───────────────────────────────────────────────
     historyLog.unshift({ prediction, classLabel: m.label, confidence, time: timeStr, date: dateStr, fileName, color: m.color, verdict: m.verdict });
-    renderHistory();
-    updateBarChart();
+    try {
+        renderHistory();
+        updateBarChart();
+    } catch (err) {
+        console.warn("Prediction displayed, but analytics could not be refreshed:", err);
+    }
 }
 
 function setInspectionState(state) {
