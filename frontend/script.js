@@ -24,6 +24,8 @@ let cameraPreviewActive = false;
 let previewRestartTimer = null;
 let hardwareCaptureId = null;
 let completedHardwareCaptureId = null;
+let hardwarePollInFlight = false;
+let captureRequestInFlight = false;
 let tuningState = {
     brightness: 0,
     contrast: 0,
@@ -275,6 +277,15 @@ function markCapturePress(isActive) {
     btn.disabled = isActive;
 }
 
+function showCaptureStarted(source) {
+    setInspectionState("neutral");
+    setText("verdictLabel", source === "hardware" ? "Physical Button" : "Touchscreen");
+    setText("verdictTitle", "Capturing Image");
+    setText("verdictSubtitle", "Please wait while the camera captures and inspects the wire.");
+    markCapturePress(true);
+    startLoader();
+}
+
 function applyPreviewFilter() {
     const preview = document.getElementById("cameraPreview");
     if (!preview) return;
@@ -404,9 +415,10 @@ async function predictStoredPath() {
 }
 
 async function captureCamera() {
+    if (captureRequestInFlight) return;
+    captureRequestInFlight = true;
     resetPreviewForRemoteSource("camera_capture");
-    markCapturePress(true);
-    startLoader();
+    showCaptureStarted("touchscreen");
 
     try {
         const res = await fetch(`${API_BASE}/capture?${processingParams().toString()}`, { method: "POST" });
@@ -420,12 +432,15 @@ async function captureCamera() {
     } catch (err) {
         alert(`Camera capture failed: ${err.message || "API error"}`);
     } finally {
+        captureRequestInFlight = false;
         markCapturePress(false);
         stopLoader();
     }
 }
 
 async function pollHardwareButton() {
+    if (hardwarePollInFlight) return;
+    hardwarePollInFlight = true;
     try {
         const res = await fetch(`${API_BASE}/hardware-button/status`, { signal: AbortSignal.timeout(4000) });
         if (!res.ok) return;
@@ -435,8 +450,7 @@ async function pollHardwareButton() {
         if (event.id !== hardwareCaptureId) {
             hardwareCaptureId = event.id;
             resetPreviewForRemoteSource("hardware_button_capture");
-            markCapturePress(true);
-            startLoader();
+            showCaptureStarted("hardware");
         }
         if (event.state === "complete" && event.result && event.id !== completedHardwareCaptureId) {
             const result = event.result;
@@ -456,7 +470,25 @@ async function pollHardwareButton() {
         }
     } catch {
         // The dashboard can also run without a connected Raspberry Pi GPIO button.
+    } finally {
+        hardwarePollInFlight = false;
     }
+}
+
+function bindCaptureButton() {
+    const btn = document.getElementById("captureBtn");
+    if (!btn) return;
+
+    // Pointer feedback happens at touch-down instead of waiting for the browser's
+    // synthesized click. The click remains the single action trigger so keyboard
+    // and accessibility activation follow the same path.
+    btn.addEventListener("pointerdown", () => btn.classList.add("is-pressed"));
+    for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) {
+        btn.addEventListener(eventName, () => {
+            if (!btn.classList.contains("is-processing")) btn.classList.remove("is-pressed");
+        });
+    }
+    btn.addEventListener("click", captureCamera);
 }
 
 async function checkCameraStatus() {
@@ -1189,8 +1221,11 @@ function clearSession() {
 }
 
 setInspectionState("neutral");
+bindCaptureButton();
 pollHardwareButton();
-setInterval(pollHardwareButton, 750);
+// 200 ms makes the on-screen shutter react quickly to a physical press while the
+// in-flight guard guarantees that slow responses never create overlapping polls.
+setInterval(pollHardwareButton, 200);
 setTimeout(() => {
     startCameraPreview();
 }, 800);

@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
@@ -692,7 +693,10 @@ async def capture(
     mask_strength: float = 0,
 ):
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    return capture_and_inspect(processing)
+    # Camera capture and TensorFlow inference are synchronous and can take several
+    # seconds on a Raspberry Pi. Keep them off the ASGI event loop so status and
+    # hardware-button polling remain responsive while a touchscreen capture runs.
+    return await run_in_threadpool(capture_and_inspect, processing)
 
 
 @app.get("/hardware-button/status")
