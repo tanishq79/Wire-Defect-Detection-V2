@@ -271,10 +271,13 @@ function appendProcessingFields(formData) {
 function markCapturePress(isActive) {
     const btn = document.getElementById("captureBtn");
     if (!btn) return;
-    btn.classList.add("is-pressed");
-    setTimeout(() => btn.classList.remove("is-pressed"), 180);
     btn.classList.toggle("is-processing", isActive);
+    btn.classList.toggle("is-pressed", isActive);
     btn.disabled = isActive;
+    if (!isActive) {
+        btn.classList.add("is-pressed");
+        setTimeout(() => btn.classList.remove("is-pressed"), 180);
+    }
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
@@ -498,7 +501,8 @@ function bindCaptureButton() {
             if (!btn.classList.contains("is-processing")) btn.classList.remove("is-pressed");
         });
     }
-    btn.addEventListener("click", captureCamera);
+    // index.html also has an inline fallback for kiosk browsers. Do not register a
+    // second click action here; both paths previously caused duplicate events.
 }
 
 async function checkCameraStatus() {
