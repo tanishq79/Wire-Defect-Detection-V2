@@ -1,4 +1,4 @@
-# Raspberry Pi 4 Deployment Notes
+# Raspberry Pi 5 Deployment Notes
 
 ## 1. Compatibility Check
 
@@ -24,8 +24,9 @@ PY
 
 Expected result for the current project:
 
-- Raspberry Pi 4 should report `aarch64` / `arm64` and 64-bit OS.
-- Python should ideally be 3.10 or 3.11.
+- Raspberry Pi 5 should report `aarch64` / `arm64` and a 64-bit OS.
+- The deployed system is tested around Python 3.13 on Debian 13; the requirements
+  file selects compatible TensorFlow, NumPy, and Pillow versions by Python version.
 - `rpicam-hello --list-cameras` or `libcamera-hello --list-cameras` should show the Raspberry Pi HQ camera.
 - At least 2 GB RAM can run inference, but 4 GB or 8 GB is safer. Use swap if TensorFlow install or model load struggles.
 
@@ -41,8 +42,7 @@ cd Wire-Defect-Detection-V2
 python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip wheel setuptools
-pip install fastapi==0.110.0 uvicorn==0.27.1 numpy pillow python-multipart
-pip install tensorflow
+pip install -r requirements.txt
 ```
 
 If `pip install tensorflow` fails on Raspberry Pi OS, capture the full error. TensorFlow wheel support depends heavily on OS version, Python version, and 64-bit architecture.
@@ -82,10 +82,14 @@ After that, double-click `SurfaceAI` on the Raspberry Pi desktop.
 The launcher will:
 
 - start the FastAPI server using `.venv`
+- wait until the API reports that the ML model is ready
 - open the browser at `http://127.0.0.1:8000`
 - keep a terminal open for logs and errors
+- release the camera and GPIO button during a controlled shutdown
 
-It deliberately does not update Git automatically at boot, so a network problem or a local change cannot prevent the inspection app from opening. Update manually with `git pull --ff-only origin main` when you choose.
+The manually clicked desktop icon checks out and fast-forwards `main` before it
+starts. Automatic startup uses the already installed version, so a network problem
+cannot prevent the inspection station from opening at boot.
 
 ### Start automatically in full-screen kiosk mode
 
@@ -108,6 +112,39 @@ rm ~/.config/autostart/SurfaceAI.desktop
 - Click `Start Preview` to view the live Raspberry Pi HQ camera feed.
 - Click `Capture & Inspect` to capture a 1600 x 1200 still and save all three image variants before running prediction from the saved 224 x 224 input.
 - Press the physical button wired between GPIO23 (physical pin 16) and GND to capture and inspect without touching the screen. Its result appears in the dashboard automatically.
+- Hold the UP button wired between GPIO5 (physical pin 29) and GND to move the M2 lead screw up.
+- Hold the DOWN button wired between GPIO25 (physical pin 22) and GND to move the M2 lead screw down.
+
+### M2 lead-screw wiring
+
+The application starts the lead-screw controller in the background with the web
+server. The Stepper Motor HAT M2 control connections are GPIO4 ENABLE, GPIO18
+STEP, and GPIO24 DIR. Connect the motor coils only to M2 A3/A4/B3/B4 and power
+the HAT from its separate motor supply.
+
+GPIO4 must be free. On this Pi, comment out `dtoverlay=w1-gpio` in
+`/boot/firmware/config.txt` and reboot before enabling M2. Do not change the
+working GPIO23 photo-button wiring. Verify the controller after startup:
+
+```bash
+curl -s http://127.0.0.1:8000/motor/status | python3 -m json.tool
+```
+
+The motor stops when the button is released, when both direction buttons are
+pressed, when the server shuts down, or after 10 continuous seconds. After the
+10-second safety stop, release the button before moving again. Because limit
+switches are not installed yet, keep the carriage away from both mechanical
+ends and stay beside the machine while testing.
+
+Optional environment settings:
+
+```bash
+export WIRE_MOTOR_ENABLED=1
+export WIRE_MOTOR_STEP_DELAY=0.001
+export WIRE_MOTOR_MAX_RUN_SECONDS=10
+```
+
+Set `WIRE_MOTOR_ENABLED=0` before launching the app to disable all motor control.
 
 All new inspection images live in one main folder, `images/` beside `app.py`:
 
@@ -150,6 +187,7 @@ GET  /camera/stream
 POST /capture
 POST /camera/stop
 GET  /images/{resolution}/{filename}
+GET  /motor/status
 ```
 
 ## 5. Saved Inspection Records

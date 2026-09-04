@@ -1,0 +1,6 @@
+# Install after requirements.txt only on a workstation used for training/evaluation.
+scikit-learn==1.4.1.post1 ; python_version < "3.13"
+scikit-learn>=1.6,<1.8 ; python_version >= "3.13"
+matplotlib==3.8.3 ; python_version < "3.13"
+matplotlib>=3.10,<3.11 ; python_version >= "3.13"
+seaborn==0.13.2

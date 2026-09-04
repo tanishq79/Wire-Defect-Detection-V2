@@ -199,6 +199,13 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+`requirements.txt` contains only dependencies needed to run the inspection API.
+For training or model evaluation on a development workstation, also install:
+
+```bash
+pip install -r requirements-training.txt
+```
+
 ---
 
 ## Verify Environment
@@ -305,6 +312,11 @@ Runtime inspection images use one main `images/` folder containing `1600x1200/`,
 save linked variants there. See [Image storage and compatibility](IMAGE_STORAGE.md)
 for configuration, existing-data handling, and API details.
 
+On Raspberry Pi, the server also runs the M2 lead-screw controller in the
+background: GPIO5 is UP, GPIO25 is DOWN, and the HAT uses GPIO4/GPIO18/GPIO24
+for ENABLE/STEP/DIR. See [Raspberry Pi setup](RASPBERRY_PI_SETUP.md) for wiring,
+the GPIO4 overlay conflict, safety cutoff, and configuration.
+
 Start the FastAPI server:
 
 ```bash
@@ -325,6 +337,12 @@ http://127.0.0.1:8000
 
 ```http
 GET /status
+```
+
+### Motor Status
+
+```http
+GET /motor/status
 ```
 
 ### Predict Wire Condition

@@ -6,17 +6,35 @@ BRANCH="${SURFACEAI_BRANCH:-main}"
 URL="http://127.0.0.1:8000"
 KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
 UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
+SERVER_PID=""
+
+cleanup() {
+  if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "Stopping SurfaceAI server..."
+    kill "$SERVER_PID"
+    wait "$SERVER_PID" 2>/dev/null || true
+  fi
+}
+
+on_signal() {
+  exit 0
+}
 
 on_error() {
   local code=$?
   echo
   echo "SurfaceAI could not start. The command above failed with exit code $code."
-  echo "Check the message above, then press Enter to close this window."
-  read -r
+  echo "Check the message above."
+  if [ -t 0 ]; then
+    echo "Press Enter to close this window."
+    read -r
+  fi
   exit "$code"
 }
 
 trap on_error ERR
+trap cleanup EXIT
+trap on_signal INT TERM
 
 cd "$APP_DIR"
 
@@ -36,26 +54,37 @@ fi
 if [ ! -x ".venv/bin/python" ]; then
   echo "Virtual environment not found at .venv"
   echo "Please run the first-time installation commands before using the launcher."
-  read -r -p "Press Enter to close..."
+  if [ -t 0 ]; then
+    read -r -p "Press Enter to close..."
+  fi
   exit 1
 fi
 
 ".venv/bin/python" -m py_compile app.py
 
 if pgrep -f "uvicorn app:app.*--port 8000" >/dev/null 2>&1; then
-  echo "Server is already running."
+    echo "Server is already running."
 else
-  echo "Starting server..."
-  ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000 &
+    echo "Starting server..."
+    ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000 &
+    SERVER_PID=$!
 fi
 
 echo "Waiting for web app..."
+READY=0
 for _ in $(seq 1 30); do
-  if curl -fsS "$URL/status" >/dev/null 2>&1; then
+  if curl -fsS "$URL/status" | ".venv/bin/python" -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("model_ready") else 1)' 2>/dev/null; then
+    READY=1
     break
   fi
   sleep 1
 done
+
+if [ "$READY" != "1" ]; then
+  echo "SurfaceAI did not become model-ready within 30 seconds."
+  curl -fsS "$URL/status" 2>/dev/null || true
+  exit 1
+fi
 
 echo "Opening $URL"
 CHROMIUM_FLAGS=("$URL" "--no-first-run" "--disable-session-crashed-bubble")
@@ -78,4 +107,10 @@ if [ "$KIOSK_MODE" = "1" ]; then
   echo "Kiosk mode is enabled. Press Alt+F4 to leave Chromium."
 fi
 echo "Press Ctrl+C here only when you want to stop the server."
-wait
+if [ -n "$SERVER_PID" ]; then
+  wait "$SERVER_PID"
+else
+  while curl -fsS "$URL/status" >/dev/null 2>&1; do
+    sleep 5
+  done
+fi

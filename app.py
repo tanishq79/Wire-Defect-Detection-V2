@@ -136,6 +136,14 @@ STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", 
 CAPTURE_MODE = "still"
 GPIO_BUTTON_PIN = int(os.getenv("WIRE_BUTTON_GPIO", "23"))
 GPIO_BUTTON_ENABLED = os.getenv("WIRE_BUTTON_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+MOTOR_ENABLED = os.getenv("WIRE_MOTOR_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+MOTOR_UP_BUTTON_PIN = int(os.getenv("WIRE_MOTOR_UP_GPIO", "5"))
+MOTOR_DOWN_BUTTON_PIN = int(os.getenv("WIRE_MOTOR_DOWN_GPIO", "25"))
+MOTOR_ENABLE_PIN = int(os.getenv("WIRE_MOTOR_ENABLE_GPIO", "4"))
+MOTOR_STEP_PIN = int(os.getenv("WIRE_MOTOR_STEP_GPIO", "18"))
+MOTOR_DIRECTION_PIN = int(os.getenv("WIRE_MOTOR_DIRECTION_GPIO", "24"))
+MOTOR_STEP_DELAY = max(0.0005, float(os.getenv("WIRE_MOTOR_STEP_DELAY", "0.001")))
+MOTOR_MAX_RUN_SECONDS = max(0.5, float(os.getenv("WIRE_MOTOR_MAX_RUN_SECONDS", "10")))
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -504,6 +512,7 @@ class CameraManager:
 
 
 camera_manager = CameraManager()
+inspection_capture_lock = threading.Lock()
 
 
 def resolve_image_path(path_value: str) -> Path:
@@ -526,20 +535,19 @@ def resolve_image_path(path_value: str) -> Path:
     return resolved
 
 
-def capture_from_picamera2() -> Image.Image:
-    return camera_manager.capture_image()
-
-
 def capture_and_inspect(processing: Optional[dict] = None) -> dict:
     """Capture a still, run the model, and record the inspection."""
-    img = capture_from_picamera2()
-    processing = processing or build_processing_settings()
-    result = predict_image(img, processing, "capture")
-    image_path = result["images"]["1600x1200"]["path"]
-    result["source"] = "camera"
-    result["path"] = str(image_path)
-    result["log"] = log_inspection(result, "camera", str(image_path))
-    return result
+    # Touchscreen and GPIO requests share one physical camera and one model.
+    # Queue simultaneous requests instead of allowing their operations to race.
+    with inspection_capture_lock:
+        img = camera_manager.capture_image()
+        processing = processing or build_processing_settings()
+        result = predict_image(img, processing, "capture")
+        image_path = result["images"]["1600x1200"]["path"]
+        result["source"] = "camera"
+        result["path"] = str(image_path)
+        result["log"] = log_inspection(result, "camera", str(image_path))
+        return result
 
 
 class HardwareCaptureButton:
@@ -614,9 +622,163 @@ class HardwareCaptureButton:
             event = dict(self.last_event) if self.last_event else None
         return {"enabled": GPIO_BUTTON_ENABLED, "available": self.button is not None, "pin": self.pin, "physical_pin": 16, "last_event": event, "error": self.last_error}
 
+    def stop(self):
+        if self.button is None:
+            return
+        try:
+            self.button.close()
+        finally:
+            self.button = None
+
+
+class LeadScrewController:
+    """Drive the M2 stepper while either physical direction button is held."""
+
+    def __init__(self):
+        self.up_button = None
+        self.down_button = None
+        self.enable = None
+        self.step = None
+        self.direction = None
+        self.last_error = None
+        self.state = "disabled" if not MOTOR_ENABLED else "starting"
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def start(self):
+        if not MOTOR_ENABLED:
+            print("Lead-screw motor disabled by WIRE_MOTOR_ENABLED", flush=True)
+            return
+        if platform.system() != "Linux":
+            self.state = "unavailable"
+            print("Lead-screw motor is only available on Raspberry Pi/Linux", flush=True)
+            return
+        try:
+            from gpiozero import Button, OutputDevice
+
+            self.up_button = Button(MOTOR_UP_BUTTON_PIN, pull_up=True, bounce_time=0.03)
+            self.down_button = Button(MOTOR_DOWN_BUTTON_PIN, pull_up=True, bounce_time=0.03)
+            # This Stepper Motor HAT revision enables M2 with a HIGH signal.
+            self.enable = OutputDevice(MOTOR_ENABLE_PIN, initial_value=False)
+            self.step = OutputDevice(MOTOR_STEP_PIN, initial_value=False)
+            self.direction = OutputDevice(MOTOR_DIRECTION_PIN, initial_value=False)
+            self._stop_event.clear()
+            self.state = "idle"
+            self._thread = threading.Thread(target=self._run, name="lead-screw-m2", daemon=True)
+            self._thread.start()
+            print(
+                "Lead-screw motor ready: UP GPIO5, DOWN GPIO25, "
+                "M2 ENABLE/STEP/DIR GPIO4/GPIO18/GPIO24",
+                flush=True,
+            )
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.state = "unavailable"
+            self._close_devices()
+            print(f"Lead-screw motor unavailable: {exc}", flush=True)
+
+    def _run(self):
+        active_direction = None
+        movement_started = None
+        try:
+            while not self._stop_event.is_set():
+                up_pressed = self.up_button.is_pressed
+                down_pressed = self.down_button.is_pressed
+                requested_direction = (
+                    "up" if up_pressed and not down_pressed
+                    else "down" if down_pressed and not up_pressed
+                    else None
+                )
+
+                if requested_direction is None:
+                    self._disable_motor("idle")
+                    active_direction = None
+                    movement_started = None
+                    self._stop_event.wait(0.005)
+                    continue
+
+                if requested_direction != active_direction:
+                    active_direction = requested_direction
+                    movement_started = time.monotonic()
+                    self.direction.value = 0 if requested_direction == "up" else 1
+                    self.enable.on()
+                    self.state = requested_direction
+
+                if time.monotonic() - movement_started >= MOTOR_MAX_RUN_SECONDS:
+                    self._disable_motor("safety-stop")
+                    # Require release before another movement can begin.
+                    while not self._stop_event.is_set() and (
+                        self.up_button.is_pressed or self.down_button.is_pressed
+                    ):
+                        self._stop_event.wait(0.02)
+                    active_direction = None
+                    movement_started = None
+                    continue
+
+                self.step.on()
+                time.sleep(MOTOR_STEP_DELAY)
+                self.step.off()
+                time.sleep(MOTOR_STEP_DELAY)
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.state = "failed"
+            print(f"Lead-screw motor stopped after GPIO error: {exc}", flush=True)
+        finally:
+            self._disable_motor("stopped")
+
+    def _disable_motor(self, state):
+        if self.step is not None:
+            self.step.off()
+        if self.enable is not None:
+            self.enable.off()
+        self.state = state
+
+    def status(self) -> dict:
+        return {
+            "enabled": MOTOR_ENABLED,
+            "available": self._thread is not None and self._thread.is_alive(),
+            "state": self.state,
+            "up_button_gpio": MOTOR_UP_BUTTON_PIN,
+            "down_button_gpio": MOTOR_DOWN_BUTTON_PIN,
+            "m2": {
+                "enable_gpio": MOTOR_ENABLE_PIN,
+                "step_gpio": MOTOR_STEP_PIN,
+                "direction_gpio": MOTOR_DIRECTION_PIN,
+            },
+            "max_run_seconds": MOTOR_MAX_RUN_SECONDS,
+            "error": self.last_error,
+        }
+
+    def _close_devices(self):
+        for device_name in ("up_button", "down_button", "step", "direction", "enable"):
+            device = getattr(self, device_name)
+            if device is not None:
+                try:
+                    device.close()
+                finally:
+                    setattr(self, device_name, None)
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+            self._thread = None
+        self._disable_motor("stopped")
+        self._close_devices()
+
 
 hardware_capture_button = HardwareCaptureButton(GPIO_BUTTON_PIN)
 hardware_capture_button.start()
+lead_screw_controller = LeadScrewController()
+lead_screw_controller.start()
+
+
+@app.on_event("shutdown")
+def shutdown_hardware():
+    """Release camera and GPIO resources during a controlled server shutdown."""
+    lead_screw_controller.stop()
+    hardware_capture_button.stop()
+    camera_manager.stop()
 
 
 def mjpeg_frames(processing: Optional[dict] = None, wire_overlay: bool = False):
@@ -672,6 +834,7 @@ async def status():
         "stream_jpeg_quality": STREAM_JPEG_QUALITY,
         "capture_mode": CAPTURE_MODE,
         "hardware_button": hardware_capture_button.status(),
+        "lead_screw": lead_screw_controller.status(),
         "ui_available": (APP_DIR / "frontend/index.html").exists(),
     }
 
@@ -731,8 +894,26 @@ async def capture(
 
 
 @app.get("/hardware-button/status")
-async def hardware_button_status():
-    return hardware_capture_button.status()
+async def hardware_button_status(after: Optional[str] = None):
+    status = hardware_capture_button.status()
+    event = status.get("last_event")
+    if after and event and event.get("id") == after:
+        # The browser already consumed this result. Avoid retransmitting and
+        # parsing the full prediction/log payload on every status poll.
+        status["unchanged"] = True
+        status["last_event"] = {
+            key: event.get(key)
+            for key in ("id", "state", "started_at", "completed_at")
+            if event.get(key) is not None
+        }
+    else:
+        status["unchanged"] = False
+    return status
+
+
+@app.get("/motor/status")
+async def motor_status():
+    return lead_screw_controller.status()
 
 
 @app.get("/camera/status")

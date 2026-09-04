@@ -21,7 +21,6 @@ let systemInfo = {};        // filled by /status poll
 let lastResult = null;      // last prediction result for single PDF export
 let activeSourceName = "";
 let cameraPreviewActive = false;
-let previewRestartTimer = null;
 let hardwareCaptureId = null;
 let completedHardwareCaptureId = null;
 let hardwarePollInFlight = false;
@@ -326,7 +325,6 @@ function updateTuningFromControls() {
     document.getElementById("valMask").textContent = tuningState.mask_strength;
     updateMaskWarning();
     applyPreviewFilter();
-    clearTimeout(previewRestartTimer);
 }
 
 function updateMaskWarning() {
@@ -458,9 +456,15 @@ async function pollHardwareButton() {
     if (hardwarePollInFlight) return;
     hardwarePollInFlight = true;
     try {
-        const res = await fetchWithTimeout(`${API_BASE}/hardware-button/status`, {}, 4000);
+        const after = completedHardwareCaptureId
+            ? `?after=${encodeURIComponent(completedHardwareCaptureId)}`
+            : "";
+        const res = await fetchWithTimeout(`${API_BASE}/hardware-button/status${after}`, {}, 4000);
         if (!res.ok) return;
-        const event = (await res.json()).last_event;
+        const status = await res.json();
+        updateHardwareButtonIndicator(status);
+        if (status.unchanged) return;
+        const event = status.last_event;
         if (!event) return;
 
         if (event.id !== hardwareCaptureId) {
@@ -487,9 +491,27 @@ async function pollHardwareButton() {
             console.error(`Hardware button capture failed: ${event.error || "unknown error"}`);
         }
     } catch (err) {
+        updateHardwareButtonIndicator({ available: false, error: err.message || "API unavailable" });
         console.warn("Hardware button status unavailable:", err);
     } finally {
         hardwarePollInFlight = false;
+    }
+}
+
+function updateHardwareButtonIndicator(status) {
+    const indicator = document.getElementById("hardwareButtonIndicator");
+    const text = document.getElementById("hardwareButtonText");
+    if (!indicator || !text) return;
+    const event = status.last_event || {};
+    indicator.classList.remove("is-checking", "is-capturing", "is-error");
+    if (!status.available || status.error || event.state === "failed") {
+        indicator.classList.add("is-error");
+        text.textContent = "Button error";
+    } else if (event.state === "capturing") {
+        indicator.classList.add("is-capturing");
+        text.textContent = "Button capturing";
+    } else {
+        text.textContent = "Button connected";
     }
 }
 
@@ -501,7 +523,11 @@ function bindCaptureButton() {
     // synthesized click. The click remains the single action trigger so keyboard
     // and accessibility activation follow the same path.
     btn.addEventListener("pointerdown", () => btn.classList.add("is-pressed"));
-    for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) {
+    btn.addEventListener("pointerup", event => {
+        if (!event.isPrimary) return;
+        captureCamera();
+    });
+    for (const eventName of ["pointercancel", "pointerleave"]) {
         btn.addEventListener(eventName, () => {
             if (!btn.classList.contains("is-processing")) btn.classList.remove("is-pressed");
         });
@@ -1258,7 +1284,7 @@ bindCaptureButton();
 pollHardwareButton();
 // 200 ms makes the on-screen shutter react quickly to a physical press while the
 // in-flight guard guarantees that slow responses never create overlapping polls.
-setInterval(pollHardwareButton, 200);
+setInterval(pollHardwareButton, 350);
 setTimeout(() => {
     startCameraPreview();
 }, 800);

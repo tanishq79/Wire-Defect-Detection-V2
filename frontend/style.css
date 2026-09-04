@@ -275,6 +275,27 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 
 .console-brand { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0; color: #fff; }
 .console-sub { font-size: 11px; color: rgba(255,255,255,.68); font-family: var(--font-mono); }
+.console-statuses { display: flex; align-items: center; gap: 8px; }
+.hardware-indicator {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 31px;
+    padding: 0 10px;
+    border: 1px solid rgba(74, 222, 128, .34);
+    border-radius: 8px;
+    background: rgba(20, 83, 45, .42);
+    color: #bbf7d0;
+    font: 500 11px var(--font-mono);
+    backdrop-filter: blur(10px);
+}
+.hardware-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+.hardware-indicator.is-checking { border-color: rgba(251,191,36,.34); background: rgba(120,53,15,.4); color: #fde68a; }
+.hardware-indicator.is-checking .hardware-dot { background: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
+.hardware-indicator.is-capturing .hardware-dot { animation: hardware-pulse .6s ease-in-out infinite alternate; }
+.hardware-indicator.is-error { border-color: rgba(248,113,113,.4); background: rgba(127,29,29,.44); color: #fecaca; }
+.hardware-indicator.is-error .hardware-dot { background: #f87171; box-shadow: 0 0 8px #f87171; }
+@keyframes hardware-pulse { to { opacity: .25; transform: scale(.72); } }
 .console-clock {
     background: rgba(15,23,42,.72);
     border: 1px solid rgba(255,255,255,.18);
@@ -422,6 +443,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     cursor: pointer;
     box-shadow: 0 14px 28px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.35);
     transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    touch-action: manipulation;
 }
 
 .capture-btn span {

@@ -18,7 +18,7 @@ Type=Application
 Name=SurfaceAI
 Comment=Start SurfaceAI wire inspection
 Path=$APP_DIR
-Exec=lxterminal -t SurfaceAI -e bash -lc '$APP_DIR/start_surfaceai_desktop.sh'
+Exec=lxterminal -t SurfaceAI -e bash -lc 'SURFACEAI_UPDATE_ON_START=1 $APP_DIR/start_surfaceai_desktop.sh'
 Icon=applications-graphics
 Terminal=false
 Categories=Utility;
@@ -48,4 +48,5 @@ echo "Autostart enabled (full-screen kiosk mode):"
 echo "$AUTOSTART_PATH"
 echo
 echo "SurfaceAI will now start automatically at desktop login in full-screen kiosk mode."
-echo "Double-click SurfaceAI on the desktop to start it normally instead."
+echo "The desktop icon checks and fast-forwards the main branch before starting."
+echo "Autostart uses the installed version so a network outage cannot block boot."

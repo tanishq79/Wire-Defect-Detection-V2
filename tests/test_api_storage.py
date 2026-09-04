@@ -21,6 +21,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setenv("WIRE_INSPECTION_DIR", str(tmp_path / "records"))
     monkeypatch.setenv("WIRE_CAPTURE_DIR", str(tmp_path / "obsolete_captures"))
     monkeypatch.setenv("WIRE_BUTTON_ENABLED", "0")
+    monkeypatch.setenv("WIRE_MOTOR_ENABLED", "0")
 
     class FakeModel:
         last_input = None
@@ -153,6 +154,7 @@ def test_camera_and_hardware_use_same_store(api):
     assert_bundle(client, result)
     button = module.hardware_capture_button
     button._capture_lock.acquire()
+    button.last_event = {"id": "button-test", "state": "capturing", "started_at": "2026-01-01T00:00:00+00:00"}
     button._capture("button-test")
     event = client.get("/hardware-button/status").json()["last_event"]
     assert event["state"] == "complete"
@@ -160,6 +162,9 @@ def test_camera_and_hardware_use_same_store(api):
     assert event["completed_at"] is not None
     assert_bundle(client, event["result"])
     assert event["result"]["path"] != result["path"]
+    unchanged = client.get("/hardware-button/status", params={"after": "button-test"}).json()
+    assert unchanged["unchanged"] is True
+    assert "result" not in unchanged["last_event"]
     # Live streaming remains in memory; it must not fill the image store.
     before = set(module.IMAGE_ROOT.rglob("*.png"))
     frames = module.mjpeg_frames()
