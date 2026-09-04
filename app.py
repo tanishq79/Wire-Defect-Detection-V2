@@ -30,6 +30,16 @@ from image_storage import APP_DIR, IMAGE_SIZES, ImageStore, configured_path
 
 app = FastAPI(title="SurfaceAI Wire Inspection API", version="2.1")
 
+
+@app.middleware("http")
+async def prevent_stale_frontend_assets(request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
@@ -641,6 +651,7 @@ async def status():
         "stream_fps": STREAM_FPS,
         "stream_jpeg_quality": STREAM_JPEG_QUALITY,
         "capture_mode": CAPTURE_MODE,
+        "hardware_button": hardware_capture_button.status(),
         "ui_available": (APP_DIR / "frontend/index.html").exists(),
     }
 

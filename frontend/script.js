@@ -106,7 +106,7 @@ setInterval(tick, 1000);
 // ══════════════════════════════════════════════════════════════
 async function pollStatus() {
     try {
-        const res  = await fetch(`${API_BASE}/status`, { signal: AbortSignal.timeout(8000) });
+        const res  = await fetchWithTimeout(`${API_BASE}/status`, {}, 8000);
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         systemInfo = data;
@@ -277,6 +277,16 @@ function markCapturePress(isActive) {
     btn.disabled = isActive;
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 function showCaptureStarted(source) {
     setInspectionState("neutral");
     setText("verdictLabel", source === "hardware" ? "Physical Button" : "Touchscreen");
@@ -442,7 +452,7 @@ async function pollHardwareButton() {
     if (hardwarePollInFlight) return;
     hardwarePollInFlight = true;
     try {
-        const res = await fetch(`${API_BASE}/hardware-button/status`, { signal: AbortSignal.timeout(4000) });
+        const res = await fetchWithTimeout(`${API_BASE}/hardware-button/status`, {}, 4000);
         if (!res.ok) return;
         const event = (await res.json()).last_event;
         if (!event) return;
@@ -468,8 +478,8 @@ async function pollHardwareButton() {
             stopLoader();
             console.error(`Hardware button capture failed: ${event.error || "unknown error"}`);
         }
-    } catch {
-        // The dashboard can also run without a connected Raspberry Pi GPIO button.
+    } catch (err) {
+        console.warn("Hardware button status unavailable:", err);
     } finally {
         hardwarePollInFlight = false;
     }
@@ -496,7 +506,7 @@ async function checkCameraStatus() {
     if (!badge) return;
 
     try {
-        const res = await fetch(`${API_BASE}/camera/status`, { signal: AbortSignal.timeout(8000) });
+        const res = await fetchWithTimeout(`${API_BASE}/camera/status`, {}, 8000);
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         badge.textContent = data.available ? data.model || "Ready" : "Camera Check";
@@ -1171,7 +1181,7 @@ async function testConnection() {
     textEl.textContent = "Testing…";
     dotEl.className    = "dot amber";
     try {
-        const res  = await fetch(`${url}/status`, { signal: AbortSignal.timeout(8000) });
+        const res  = await fetchWithTimeout(`${url}/status`, {}, 8000);
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         dotEl.className    = "dot green";

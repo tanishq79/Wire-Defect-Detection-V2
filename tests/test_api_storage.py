@@ -207,8 +207,11 @@ def test_status_ui_history_and_routes(api):
     assert status["capture_dir"] == str(module.IMAGE_ROOT / "1600x1200")
     assert set(status["image_directories"]) == {"1600x1200", "640x320", "224x224"}
     assert status["capture_mode"] == "still"
+    assert status["hardware_button"]["enabled"] is False
     assert client.get("/").status_code == 200
-    assert client.get("/ui/script.js").status_code == 200
+    ui_response = client.get("/ui/script.js")
+    assert ui_response.status_code == 200
+    assert ui_response.headers["cache-control"].startswith("no-store")
     assert client.get("/api").status_code == 200
     assert client.get("/camera/status").json()["available"] is True
     module.INSPECTION_DIR.mkdir()

@@ -59,4 +59,6 @@ assert.match(source, /btn\.addEventListener\("pointerdown"/);
 assert.match(source, /btn\.addEventListener\("click", captureCamera\)/);
 assert.match(source, /if \(hardwarePollInFlight\) return;/);
 assert.match(source, /setInterval\(pollHardwareButton, 200\)/);
+assert.doesNotMatch(source, /AbortSignal\.timeout/);
+assert.match(source, /function fetchWithTimeout\(/);
 console.log('Touchscreen and physical-button feedback contracts passed.');
