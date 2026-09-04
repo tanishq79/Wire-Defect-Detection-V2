@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 import zipfile
+import cv2
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -142,6 +143,10 @@ ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 if (APP_DIR / "frontend").exists():
     app.mount("/ui", StaticFiles(directory=str(APP_DIR / "frontend"), html=True), name="frontend")
 
+def check_blur(img: Image.Image, threshold: float = 50.0):
+    gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
+    blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    return blur_score, blur_score < threshold
 
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, float(value)))
@@ -688,9 +693,26 @@ async def predict(
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
+    # img = open_image_from_bytes(contents)
+    # processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
+    # result = predict_image(img, processing, Path(file.filename or "upload").stem)
+
     img = open_image_from_bytes(contents)
+
+    blur_score, is_blurry = check_blur(img)
+
+    if is_blurry:
+        return {
+            "status": "blurry",
+            "message": "Image is blurry. Please capture a clearer image.",
+            "blur_score": round(blur_score, 2),
+        }
+
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
     result = predict_image(img, processing, Path(file.filename or "upload").stem)
+    result["status"] = "clear"
+    result["blur_score"] = round(blur_score, 2)
+
     result["source"] = "upload"
     result["filename"] = file.filename
     result["saved_path"] = result["images"]["1600x1200"]["path"]
