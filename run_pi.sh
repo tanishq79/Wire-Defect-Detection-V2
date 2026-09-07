@@ -21,4 +21,4 @@ fi
 python -m py_compile app.py
 echo "Starting SurfaceAI on http://127.0.0.1:8000"
 echo "Use Ctrl+C to stop."
-uvicorn app:app --host 0.0.0.0 --port 8000
+uvicorn app:app --host 0.0.0.0 --port 8000 --no-access-log

@@ -25,7 +25,7 @@ let hardwareCaptureId = null;
 let completedHardwareCaptureId = null;
 let hardwarePollInFlight = false;
 let captureRequestInFlight = false;
-let machineNumber = 1;
+let machineNumber = 100;
 let machinePollInFlight = false;
 let tuningState = {
     brightness: 0,
@@ -103,8 +103,10 @@ tick();
 setInterval(tick, 1000);
 
 function renderMachineNumber(value, buttons) {
-    machineNumber = Math.max(1, parseInt(value, 10) || 1);
+    machineNumber = Math.max(100, parseInt(value, 10) || 100);
     setText("machineNumber", machineNumber);
+    const settingsInput = document.getElementById("cfg-machineNumber");
+    if (settingsInput && document.activeElement !== settingsInput) settingsInput.value = machineNumber;
     if (buttons) {
         setText(
             "machineButtonStatus",
@@ -139,6 +141,25 @@ async function changeMachine(delta) {
         renderMachineNumber(data.machine_number);
     } catch (err) {
         alert(`Machine counter failed: ${err.message || "API error"}`);
+    }
+}
+
+async function setMachineFromSettings() {
+    const input = document.getElementById("cfg-machineNumber");
+    const requested = parseInt(input.value, 10);
+    if (!Number.isInteger(requested) || requested < 100 || requested > 999) {
+        setText("cfg-machineStatus", "Enter a whole number from 100 to 999.");
+        input.focus();
+        return;
+    }
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/machine/${requested}`, { method: "POST" }, 2500);
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        renderMachineNumber(data.machine_number);
+        setText("cfg-machineStatus", `Machine ${data.machine_number} selected for the next inspection.`);
+    } catch (err) {
+        setText("cfg-machineStatus", `Could not update machine: ${err.message || "API error"}`);
     }
 }
 
@@ -685,7 +706,7 @@ function applyPredictionResult(data, sourceName) {
     document.getElementById("actionText").textContent = noteText;
 
     // ── Save last result for single PDF ───────────────────────
-    const inspectionMachine = Math.max(1, parseInt(data.machine_number, 10) || machineNumber);
+    const inspectionMachine = Math.max(100, parseInt(data.machine_number, 10) || machineNumber);
     lastResult = { prediction: finalPrediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label, machineNumber: inspectionMachine };
 
     // ── Session counters ──────────────────────────────────────
@@ -935,7 +956,7 @@ function refreshReports() {
         const vClass = h.verdict === "PASS" ? "verdict-pass" : "verdict-flag";
         return `<tr>
             <td style="font-family:var(--font-mono);color:var(--text-muted)">${historyLog.length - i}</td>
-            <td style="font-family:var(--font-mono);font-weight:700">${h.machineNumber || 1}</td>
+            <td style="font-family:var(--font-mono);font-weight:700">${h.machineNumber || 100}</td>
             <td><span class="td-class" style="background:${m.bg};color:${m.color};border-color:${m.border}">${h.classLabel}</span></td>
             <td style="font-family:var(--font-mono)">${h.confidence}%</td>
             <td style="font-family:var(--font-mono);color:var(--text-muted);font-size:11px">${h.fileName || "—"}</td>
@@ -949,7 +970,7 @@ function exportCSV() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
     const header = ["#", "Machine", "Class", "Confidence (%)", "File Name", "Time", "Verdict"];
     const rows   = historyLog.map((h, i) => [
-        historyLog.length - i, h.machineNumber || 1, h.classLabel, h.confidence, h.fileName || "", h.time, h.verdict
+        historyLog.length - i, h.machineNumber || 100, h.classLabel, h.confidence, h.fileName || "", h.time, h.verdict
     ]);
     const csv  = [header, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1061,7 +1082,7 @@ function exportSinglePDF() {
     y += 8;
 
     const rows = [
-        ["Machine Number", lastResult.machineNumber || 1],
+        ["Machine Number", lastResult.machineNumber || 100],
         ["File Name",    lastResult.fileName],
         ["Inspection Date", lastResult.dateStr],
         ["Inspection Time", lastResult.timeStr],
@@ -1237,7 +1258,7 @@ function exportSessionPDF() {
 
         doc.setTextColor(17, 24, 39);
         doc.setFont("helvetica", "bold");
-        doc.text(String(h.machineNumber || 1), cols[1], y + 3);
+        doc.text(String(h.machineNumber || 100), cols[1], y + 3);
 
         doc.setTextColor(...(isDefected ? [220, 38, 38] : [5, 150, 105]));
         doc.setFont("helvetica", "normal");
@@ -1294,6 +1315,10 @@ async function testConnection() {
 
 document.getElementById("cfg-minConf")?.addEventListener("input", e => {
     MIN_CONF = parseInt(e.target.value);
+});
+
+document.getElementById("cfg-machineNumber")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") setMachineFromSettings();
 });
 
 ["ctlBrightness", "ctlContrast", "ctlSharpness", "ctlMask"].forEach(id => {

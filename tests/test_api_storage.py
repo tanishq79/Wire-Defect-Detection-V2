@@ -88,7 +88,7 @@ def test_upload_contract_and_exact_model_input(api, processing):
     assert result["saved_path"] == result["images"]["1600x1200"]["path"]
     assert result["prediction"] == "ok_wire"
     assert result["confidence"] == 80
-    assert result["machine_number"] == 1
+    assert result["machine_number"] == 100
     assert_bundle(client, result)
     prepared, _ = module.prepare_image_for_model(module.open_image_from_bytes(contents), module.build_processing_settings(**processing))
     expected = np.asarray(prepared.resize((224, 224)), dtype=np.float32)[None] / 127.5 - 1
@@ -96,7 +96,7 @@ def test_upload_contract_and_exact_model_input(api, processing):
     history = client.get("/history").json()["items"]
     assert history[0]["images"] == result["images"]
     assert history[0]["processing"] == result["processing"]
-    assert history[0]["machine_number"] == 1
+    assert history[0]["machine_number"] == 100
     assert bool(result.get("processed_path")) == bool(processing)
     assert not (module.INSPECTION_DIR / "uploads").exists()
     assert not (module.INSPECTION_DIR / "processed").exists()
@@ -220,12 +220,12 @@ def test_status_ui_history_and_routes(api):
     assert set(status["image_directories"]) == {"1600x1200", "640x320", "224x224"}
     assert status["capture_mode"] == "still"
     assert status["hardware_button"]["enabled"] is False
-    assert status["machine"]["number"] == 1
+    assert status["machine"]["number"] == 100
     assert status["machine"]["buttons"]["enabled"] is False
-    assert client.post("/machine/increment").json()["machine_number"] == 2
-    assert client.get("/machine").json()["machine_number"] == 2
-    assert client.post("/machine/decrement").json()["machine_number"] == 1
-    assert client.post("/machine/42").json()["machine_number"] == 42
+    assert client.post("/machine/increment").json()["machine_number"] == 101
+    assert client.get("/machine").json()["machine_number"] == 101
+    assert client.post("/machine/decrement").json()["machine_number"] == 100
+    assert client.post("/machine/142").json()["machine_number"] == 142
     assert client.post("/machine/0").status_code == 400
     assert client.get("/").status_code == 200
     ui_response = client.get("/ui/script.js")

@@ -34,7 +34,7 @@ Type=Application
 Name=SurfaceAI Kiosk
 Comment=Start SurfaceAI automatically in full-screen kiosk mode
 Path=$APP_DIR
-Exec=env SURFACEAI_KIOSK=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh
+Exec=env SURFACEAI_KIOSK=1 SURFACEAI_UPDATE_ON_START=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -49,4 +49,4 @@ echo "$AUTOSTART_PATH"
 echo
 echo "SurfaceAI will now start automatically at desktop login in full-screen kiosk mode."
 echo "The desktop icon checks and fast-forwards the main branch before starting."
-echo "Autostart uses the installed version so a network outage cannot block boot."
+echo "Desktop and autostart launchers check main; a network outage falls back to the installed version."

@@ -172,7 +172,7 @@
                     <span class="machine-counter-label">Machine</span>
                     <div class="machine-counter-controls">
                         <button type="button" onclick="changeMachine(-1)" aria-label="Previous machine">−</button>
-                        <strong id="machineNumber">1</strong>
+                        <strong id="machineNumber">100</strong>
                         <button type="button" onclick="changeMachine(1)" aria-label="Next machine">+</button>
                     </div>
                     <small id="machineButtonStatus">Touch controls ready</small>
@@ -363,6 +363,14 @@
 
                 <div class="settings-section">
                     <div class="settings-section-title">SESSION</div>
+                    <div class="settings-row">
+                        <label class="settings-label" for="cfg-machineNumber">Source Machine Number</label>
+                        <div class="settings-input-row">
+                            <input class="settings-input" id="cfg-machineNumber" type="number" min="100" max="999" value="100" inputmode="numeric">
+                            <button type="button" class="btn-outline" onclick="setMachineFromSettings()">Apply</button>
+                        </div>
+                        <p class="settings-hint" id="cfg-machineStatus">The next inspection will be recorded against this machine.</p>
+                    </div>
                     <div class="settings-row">
                         <label class="settings-label">Clear Session Data</label>
                         <div style="display:flex;gap:10px;align-items:center">

@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import os
-import uuid
 
 from PIL import Image, ImageOps
 
@@ -22,10 +21,18 @@ class ImageStore:
         for resolution in IMAGE_SIZES:
             (self.root / resolution).mkdir(parents=True, exist_ok=True)
 
-    def save(self, original: Image.Image, processed: Image.Image, stem: str = "inspection") -> dict:
+    def save(
+        self,
+        original: Image.Image,
+        processed: Image.Image,
+        stem: str = "inspection",
+        machine_number: int | None = None,
+    ) -> dict:
         """Save a unique lossless bundle; model pixels match the previous resize."""
-        safe_stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in stem)[:48] or "inspection"
-        filename = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S_%f}_{safe_stem}_{uuid.uuid4().hex}.png"
+        now = datetime.now().astimezone()
+        machine_part = f"machine-{int(machine_number)}" if machine_number is not None else "machine-unknown"
+        # Microseconds keep names unique while leaving the requested fields easy to read.
+        filename = f"{now:%Y-%m-%d_%H-%M-%S-%f}_{machine_part}.png"
         variants = {
             "1600x1200": ImageOps.pad(original.convert("RGB"), (1600, 1200), method=Image.Resampling.LANCZOS),
             "640x320": ImageOps.pad(processed.convert("RGB"), (640, 320), method=Image.Resampling.LANCZOS),

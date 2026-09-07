@@ -144,7 +144,7 @@ MOTOR_STEP_PIN = int(os.getenv("WIRE_MOTOR_STEP_GPIO", "18"))
 MOTOR_DIRECTION_PIN = int(os.getenv("WIRE_MOTOR_DIRECTION_GPIO", "24"))
 MOTOR_STEP_DELAY = max(0.0005, float(os.getenv("WIRE_MOTOR_STEP_DELAY", "0.001")))
 MOTOR_MAX_RUN_SECONDS = max(0.5, float(os.getenv("WIRE_MOTOR_MAX_RUN_SECONDS", "10")))
-MACHINE_MIN = 1
+MACHINE_MIN = max(1, int(os.getenv("WIRE_MACHINE_MIN", "100")))
 MACHINE_MAX = max(MACHINE_MIN, int(os.getenv("WIRE_MACHINE_MAX", "999")))
 MACHINE_STATE_FILE = INSPECTION_DIR / "machine_state.json"
 MACHINE_BUTTONS_ENABLED = os.getenv("WIRE_MACHINE_BUTTONS_ENABLED", "0").strip().lower() not in {"0", "false", "no", "off"}
@@ -226,9 +226,14 @@ def prepare_image_for_model(img: Image.Image, settings: Optional[dict] = None):
     return processed, settings
 
 
-def predict_image(img: Image.Image, processing: Optional[dict] = None, stem: str = "inspection"):
+def predict_image(
+    img: Image.Image,
+    processing: Optional[dict] = None,
+    stem: str = "inspection",
+    machine_number: Optional[int] = None,
+):
     processed_img, processing_settings = prepare_image_for_model(img, processing)
-    images = image_store.save(img, processed_img, stem)
+    images = image_store.save(img, processed_img, stem, machine_number=machine_number)
     # Read the saved model variant, so its pixels are the actual inference input.
     img = open_image_from_path(Path(images["224x224"]["path"]))
 
@@ -252,6 +257,7 @@ def predict_image(img: Image.Image, processing: Optional[dict] = None, stem: str
         "raw_score": round(score, 4),
         "processing": processing_settings,
         "images": images,
+        "machine_number": machine_number if machine_number is not None else MACHINE_MIN,
     }
     if any(processing_settings.values()):
         result["processed_path"] = images["224x224"]["path"]
@@ -593,8 +599,7 @@ def capture_and_inspect(processing: Optional[dict] = None) -> dict:
         machine_number = machine_counter.value
         img = camera_manager.capture_image()
         processing = processing or build_processing_settings()
-        result = predict_image(img, processing, "capture")
-        result["machine_number"] = machine_number
+        result = predict_image(img, processing, "capture", machine_number=machine_number)
         image_path = result["images"]["1600x1200"]["path"]
         result["source"] = "camera"
         result["path"] = str(image_path)
@@ -968,8 +973,11 @@ async def predict(
 
     img = open_image_from_bytes(contents)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    result = predict_image(img, processing, Path(file.filename or "upload").stem)
-    result["machine_number"] = machine_counter.value
+    machine_number = machine_counter.value
+    result = predict_image(
+        img, processing, Path(file.filename or "upload").stem,
+        machine_number=machine_number,
+    )
     result["source"] = "upload"
     result["filename"] = file.filename
     result["saved_path"] = result["images"]["1600x1200"]["path"]
@@ -988,8 +996,8 @@ async def predict_path(
     image_path = resolve_image_path(path)
     img = open_image_from_path(image_path)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
-    result = predict_image(img, processing, image_path.stem)
-    result["machine_number"] = machine_counter.value
+    machine_number = machine_counter.value
+    result = predict_image(img, processing, image_path.stem, machine_number=machine_number)
     result["source"] = "path"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "path", str(image_path))

@@ -5,7 +5,7 @@ APP_DIR="${SURFACEAI_APP_DIR:-$HOME/Desktop/Wire-Defect-Detection-V2}"
 BRANCH="${SURFACEAI_BRANCH:-main}"
 URL="http://127.0.0.1:8000"
 KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
-UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
+UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-1}"
 SERVER_PID=""
 
 cleanup() {
@@ -44,9 +44,11 @@ echo "Branch:  $BRANCH"
 
 if [ "$UPDATE_ON_START" = "1" ] && command -v git >/dev/null 2>&1; then
   echo "Checking for updates..."
-  git fetch origin
-  git checkout "$BRANCH"
-  git pull --ff-only origin "$BRANCH"
+  if git fetch origin && git checkout "$BRANCH" && git pull --ff-only origin "$BRANCH"; then
+    echo "Application is up to date."
+  else
+    echo "Update check unavailable; starting the installed version."
+  fi
 else
   echo "Using the installed project version (automatic Git updates disabled)."
 fi
@@ -66,14 +68,14 @@ if pgrep -f "uvicorn app:app.*--port 8000" >/dev/null 2>&1; then
     echo "Server is already running."
 else
     echo "Starting server..."
-    ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000 &
+    ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000 --no-access-log &
     SERVER_PID=$!
 fi
 
 echo "Waiting for web app..."
 READY=0
 for _ in $(seq 1 30); do
-  if curl -fsS "$URL/status" | ".venv/bin/python" -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("model_ready") else 1)' 2>/dev/null; then
+  if curl -fsS "$URL/status" 2>/dev/null | ".venv/bin/python" -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("model_ready") else 1)' 2>/dev/null; then
     READY=1
     break
   fi

@@ -151,6 +151,9 @@ Set `WIRE_MOTOR_ENABLED=0` before launching the app to disable all motor control
 The bottom-right counter selects the machine from which the test wire was taken.
 Use its touchscreen `+` and `-` controls before capturing. The selected number is
 stored across restarts and is recorded with every inspection, CSV, and PDF report.
+It starts at machine 100. A worker can also type any machine number from 100 to
+999 in Settings and press Apply. New image bundles use readable local timestamps:
+`YYYY-MM-DD_HH-MM-SS-microseconds_machine-N.png`.
 
 For the two future physical counter controls, use momentary normally-open
 pushbuttons. GPIO14 (physical pin 8) and GPIO15 (physical pin 10) are the proposed
