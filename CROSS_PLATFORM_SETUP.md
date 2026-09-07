@@ -22,12 +22,10 @@ If port 8000 is occupied, use `./start_surfaceai_windows.ps1 -Port 8001` and ope
 
 ```bash
 cd /path/to/Wire-Defect-Detection-V2
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python run_desktop.py
+bash ./setup_surfaceai_desktop.sh
 ```
+
+The script creates a clean `.surfaceai-venv`, uses Python 3.11, and runs macOS inference on CPU. TensorFlow Metal is not installed because incompatible Metal plug-ins can prevent the application from launching.
 
 Open `http://127.0.0.1:8000/ui/` if the browser does not open automatically. Use **Select Image** and **Inspect Selected**. The camera stream and hardware controls are expected to be unavailable on regular computers.
 

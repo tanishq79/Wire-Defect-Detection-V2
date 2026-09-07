@@ -32,12 +32,10 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ```bash
 cd /path/to/Wire-Defect-Detection-V2
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python run_desktop.py
+bash ./setup_surfaceai_desktop.sh
 ```
+
+This clean desktop setup uses `.surfaceai-venv` and intentionally runs macOS inference on CPU for reliability. It does not install the optional TensorFlow Metal plug-in.
 
 ### Raspberry Pi
 

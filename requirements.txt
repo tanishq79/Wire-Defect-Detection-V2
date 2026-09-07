@@ -1,6 +1,9 @@
-tensorflow==2.21.0 ; python_version >= "3.11"
-tf-keras==2.21.0 ; python_version >= "3.11"
-tensorflow-metal==1.2.0 ; platform_system=="Darwin" and platform_machine=="arm64"
+# TensorFlow Metal is intentionally not installed: its plugin release cycle can
+# lag TensorFlow and prevent a Mac app from starting. Desktop inference uses CPU.
+tensorflow==2.16.2 ; platform_system == "Darwin" and platform_machine == "x86_64" and python_version >= "3.11"
+tf-keras==2.16.0 ; platform_system == "Darwin" and platform_machine == "x86_64" and python_version >= "3.11"
+tensorflow==2.21.0 ; (platform_system != "Darwin" or platform_machine != "x86_64") and python_version >= "3.11"
+tf-keras==2.21.0 ; (platform_system != "Darwin" or platform_machine != "x86_64") and python_version >= "3.11"
 
 fastapi==0.110.0
 uvicorn==0.27.1
