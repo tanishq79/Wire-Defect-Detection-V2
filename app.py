@@ -5,13 +5,15 @@ import io
 import json
 import os
 import platform
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
 import uuid
 import zipfile
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.responses import StreamingResponse
@@ -57,6 +59,62 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _run_git(*arguments: str) -> subprocess.CompletedProcess:
+    """Run a fixed Git command in the checked-out project without shell expansion."""
+    git = shutil.which("git")
+    if not git:
+        raise HTTPException(status_code=503, detail="Git is not installed on this computer")
+    try:
+        return subprocess.run(
+            [git, *arguments],
+            cwd=APP_DIR,
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Git operation timed out") from exc
+
+
+def _git_output(*arguments: str) -> str:
+    result = _run_git(*arguments)
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "Git command failed").strip()
+        raise HTTPException(status_code=503, detail=detail)
+    return result.stdout.strip()
+
+
+def _require_local_update_request(request: Request) -> None:
+    # Pulling source code is deliberately limited to the computer running the app.
+    if request.client and request.client.host not in {"127.0.0.1", "::1", "testclient"}:
+        raise HTTPException(status_code=403, detail="Software updates are available only from the local computer")
+
+
+def software_update_status() -> dict:
+    local_commit = _git_output("rev-parse", "HEAD")
+    branch = _git_output("branch", "--show-current")
+    dirty = bool(_git_output("status", "--porcelain"))
+    remote_result = _run_git("ls-remote", "origin", "refs/heads/main")
+    remote_commit = None
+    remote_error = None
+    if remote_result.returncode:
+        remote_error = (remote_result.stderr or remote_result.stdout or "Unable to reach origin").strip()
+    elif remote_result.stdout.strip():
+        remote_commit = remote_result.stdout.split()[0]
+    return {
+        "app_version": APP_VERSION,
+        "branch": branch,
+        "local_commit": local_commit,
+        "local_commit_short": local_commit[:8],
+        "remote_commit": remote_commit,
+        "remote_commit_short": remote_commit[:8] if remote_commit else None,
+        "update_available": bool(remote_commit and remote_commit != local_commit),
+        "working_tree_clean": not dirty,
+        "remote_error": remote_error,
+    }
 
 def install_keras_legacy_config_shims():
     depthwise_layer = tf.keras.layers.DepthwiseConv2D
@@ -936,6 +994,32 @@ async def api_info():
         "docs": "/docs",
         "status": "/status",
         "ui": "/ui/",
+    }
+
+
+@app.get("/software-update/status")
+async def get_software_update_status():
+    return software_update_status()
+
+
+@app.post("/software-update/apply")
+async def apply_software_update(request: Request):
+    _require_local_update_request(request)
+    before = software_update_status()
+    if not before["working_tree_clean"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Update blocked because this installation has uncommitted local changes",
+        )
+    _git_output("fetch", "origin", "main")
+    _git_output("pull", "--ff-only", "origin", "main")
+    after = software_update_status()
+    return {
+        "updated": before["local_commit"] != after["local_commit"],
+        "restart_required": True,
+        "before_commit": before["local_commit_short"],
+        "current_commit": after["local_commit_short"],
+        "app_version": APP_VERSION,
     }
 
 @app.get("/status")

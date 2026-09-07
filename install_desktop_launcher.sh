@@ -18,7 +18,7 @@ Type=Application
 Name=SurfaceAI
 Comment=Start SurfaceAI wire inspection
 Path=$APP_DIR
-Exec=lxterminal -t SurfaceAI -e bash -lc 'SURFACEAI_UPDATE_ON_START=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh'
+Exec=lxterminal -t SurfaceAI -e bash -lc '/usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh'
 Icon=applications-graphics
 Terminal=false
 Categories=Utility;
@@ -34,7 +34,7 @@ Type=Application
 Name=SurfaceAI Kiosk
 Comment=Start SurfaceAI automatically in full-screen kiosk mode
 Path=$APP_DIR
-Exec=env SURFACEAI_KIOSK=1 SURFACEAI_UPDATE_ON_START=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh
+Exec=env SURFACEAI_KIOSK=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -48,5 +48,5 @@ echo "Autostart enabled (full-screen kiosk mode):"
 echo "$AUTOSTART_PATH"
 echo
 echo "SurfaceAI will now start automatically at desktop login in full-screen kiosk mode."
-echo "The desktop icon checks and fast-forwards the main branch before starting."
-echo "Desktop and autostart launchers check main; a network outage falls back to the installed version."
+echo "The desktop icon and autostart use the installed version without automatic updates."
+echo "Use Settings > Software Update to check and install updates deliberately."

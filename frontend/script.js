@@ -1312,6 +1312,62 @@ async function testConnection() {
     }
 }
 
+function showSoftwareUpdateStatus(data) {
+    const dot = document.getElementById("dot-update");
+    const version = document.getElementById("softwareVersion");
+    const status = document.getElementById("softwareUpdateStatus");
+    const apply = document.getElementById("applySoftwareUpdate");
+    if (!dot || !version || !status || !apply) return;
+
+    version.textContent = `v${data.app_version} - ${data.local_commit_short || "unknown"}`;
+    apply.disabled = !data.update_available || !data.working_tree_clean;
+    if (data.remote_error) {
+        dot.className = "dot amber";
+        status.textContent = "Could not contact the update server. The installed version is unchanged.";
+    } else if (!data.working_tree_clean) {
+        dot.className = "dot amber";
+        status.textContent = "Local changes detected. Update is blocked to protect this installation.";
+    } else if (data.update_available) {
+        dot.className = "dot amber";
+        status.textContent = `Update available: ${data.remote_commit_short}. Click Update Software, then restart the application.`;
+    } else {
+        dot.className = "dot green";
+        status.textContent = "This installation is up to date.";
+    }
+}
+
+async function checkSoftwareUpdate() {
+    const status = document.getElementById("softwareUpdateStatus");
+    if (status) status.textContent = "Checking for updates...";
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/software-update/status`, {}, 12000);
+        if (!res.ok) throw new Error(await readApiError(res));
+        showSoftwareUpdateStatus(await res.json());
+    } catch (err) {
+        if (status) status.textContent = `Update check failed: ${err.message || "API error"}`;
+    }
+}
+
+async function applySoftwareUpdate() {
+    const status = document.getElementById("softwareUpdateStatus");
+    const apply = document.getElementById("applySoftwareUpdate");
+    if (!confirm("Download the approved update from main? The application will need a restart afterward.")) return;
+    if (apply) apply.disabled = true;
+    if (status) status.textContent = "Downloading update...";
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/software-update/apply`, { method: "POST" }, 45000);
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        if (status) {
+            status.textContent = data.updated
+                ? `Updated to ${data.current_commit}. Close and restart SurfaceAI to use the new version.`
+                : "Already up to date. No restart is needed.";
+        }
+    } catch (err) {
+        if (status) status.textContent = `Update failed: ${err.message || "API error"}`;
+    }
+}
+
 document.getElementById("cfg-minConf")?.addEventListener("input", e => {
     MIN_CONF = parseInt(e.target.value);
 });

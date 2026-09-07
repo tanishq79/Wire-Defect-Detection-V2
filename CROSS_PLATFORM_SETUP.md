@@ -10,14 +10,11 @@ Use 64-bit Python 3.10, 3.11, or 3.12. Python 3.11 is the recommended common ver
 
 ```powershell
 cd path\to\Wire-Defect-Detection-V2
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python run_desktop.py
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\setup_surfaceai_windows.ps1
 ```
 
-If PowerShell blocks activation, use `Set-ExecutionPolicy -Scope Process Bypass` for the current terminal, then activate again. Install the Microsoft Visual C++ Redistributable if TensorFlow reports a missing DLL.
+For daily use, run `Set-ExecutionPolicy -Scope Process Bypass -Force` followed by `./start_surfaceai_windows.ps1`. These scripts never pull from Git automatically. Install the Microsoft Visual C++ Redistributable if TensorFlow reports a missing DLL.
 
 ## macOS and Linux
 

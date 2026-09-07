@@ -362,6 +362,21 @@
                 </div>
 
                 <div class="settings-section">
+                    <div class="settings-section-title">SOFTWARE UPDATE</div>
+                    <div class="settings-row">
+                        <label class="settings-label">Installed Version</label>
+                        <div class="conn-status"><span class="dot" id="dot-update"></span><span id="softwareVersion">Not checked</span></div>
+                    </div>
+                    <div class="settings-row">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                            <button type="button" class="btn-outline" onclick="checkSoftwareUpdate()">Check for Update</button>
+                            <button type="button" class="btn-outline" id="applySoftwareUpdate" onclick="applySoftwareUpdate()" disabled>Update Software</button>
+                        </div>
+                        <p class="settings-hint" id="softwareUpdateStatus">Updates are checked only when you choose Check for Update.</p>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <div class="settings-section-title">SESSION</div>
                     <div class="settings-row">
                         <label class="settings-label" for="cfg-machineNumber">Source Machine Number</label>
