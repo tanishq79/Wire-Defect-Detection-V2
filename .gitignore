@@ -1,5 +1,7 @@
 venv/
 .venv/
+.surfaceai-venv/
+tmp*/
 dataset/
 __pycache__/
 *.pyc

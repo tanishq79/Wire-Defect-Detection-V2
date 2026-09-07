@@ -3,7 +3,8 @@ set -euo pipefail
 
 APP_DIR="${SURFACEAI_APP_DIR:-$HOME/Desktop/Wire-Defect-Detection-V2}"
 BRANCH="${SURFACEAI_BRANCH:-main}"
-URL="http://127.0.0.1:8000"
+PORT="${SURFACEAI_PORT:-8000}"
+URL="http://127.0.0.1:${PORT}"
 KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
 UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
 SERVER_PID=""
@@ -64,11 +65,11 @@ fi
 
 ".venv/bin/python" -m py_compile app.py
 
-if pgrep -f "uvicorn app:app.*--port 8000" >/dev/null 2>&1; then
+if pgrep -f "uvicorn app:app.*--port ${PORT}" >/dev/null 2>&1; then
     echo "Server is already running."
 else
     echo "Starting server..."
-    ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000 --no-access-log &
+    ".venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port "$PORT" --no-access-log &
     SERVER_PID=$!
 fi
 

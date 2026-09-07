@@ -5,13 +5,17 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
 import zipfile
+
+import h5py
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +24,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+# The saved inspection model uses the legacy Keras format. Every supported
+# platform installs the matching ``tf-keras`` package and uses it consistently.
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
 import tensorflow as tf
@@ -153,7 +159,7 @@ def sanitize_keras_config(value):
 
 
 def load_sanitized_keras_archive(model_path: str):
-    with tempfile.TemporaryDirectory(prefix="surfaceai_model_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="surfaceai_model_", ignore_cleanup_errors=True) as tmp_dir:
         with zipfile.ZipFile(model_path) as archive:
             archive.extractall(tmp_dir)
 
@@ -164,8 +170,55 @@ def load_sanitized_keras_archive(model_path: str):
             config = sanitize_keras_config(json.load(config_file))
 
         rebuilt_model = tf.keras.models.model_from_json(json.dumps(config))
-        rebuilt_model.load_weights(str(weights_path))
+        try:
+            rebuilt_model.load_weights(str(weights_path))
+        except ValueError:
+            # Keras 2.15 archives can contain the newer object-path HDF5
+            # layout. Older deserializers see no variables in that layout,
+            # although the tensors are valid. Restore them in saved order.
+            with h5py.File(weights_path, "r") as weights_file:
+                _restore_hdf5_archive_weights(rebuilt_model, weights_file["layers"])
         return rebuilt_model
+
+
+def _keras_archive_group_name(layer, counters: dict[str, int]) -> str:
+    """Return Keras' generic HDF5 group name for one layer instance."""
+    stem = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", layer.__class__.__name__).lower()
+    index = counters.get(stem, 0)
+    counters[stem] = index + 1
+    return stem if index == 0 else f"{stem}_{index}"
+
+
+def _restore_hdf5_archive_weights(model, layer_groups) -> None:
+    """Restore Keras 2.15 archive weights by layer identity, not file order."""
+    counters: dict[str, int] = {}
+    for layer in model.layers:
+        group_name = _keras_archive_group_name(layer, counters)
+        if group_name not in layer_groups:
+            raise RuntimeError(f"Model archive is missing layer weights for {layer.name}.")
+        group = layer_groups[group_name]
+
+        if isinstance(layer, tf.keras.Model):
+            _restore_hdf5_archive_weights(layer, group["layers"])
+            continue
+
+        variables = list(layer.weights)
+        tensors_group = group.get("vars")
+        tensors = [] if tensors_group is None else [
+            tensors_group[str(index)][()] for index in range(len(tensors_group))
+        ]
+        if len(variables) != len(tensors):
+            raise RuntimeError(
+                f"Model archive has {len(tensors)} tensors for {layer.name}; "
+                f"expected {len(variables)}."
+            )
+        for variable, tensor in zip(variables, tensors):
+            if tuple(variable.shape) != tuple(tensor.shape):
+                raise RuntimeError(
+                    f"Model archive weight shape mismatch for {layer.name}: "
+                    f"expected {tuple(variable.shape)}, received {tuple(tensor.shape)}."
+                )
+            variable.assign(tensor)
 
 
 def load_wire_model():

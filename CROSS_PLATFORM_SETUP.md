@@ -4,7 +4,7 @@ SurfaceAI supports upload-based inspection on Windows, macOS, and Linux. Raspber
 
 ## Supported desktop baseline
 
-Use 64-bit Python 3.10, 3.11, or 3.12. Python 3.11 is the recommended common version for Windows, macOS, and Linux deployments.
+Use 64-bit Python 3.11. This is the tested common version for Windows, macOS, and Linux deployments.
 
 ## Windows PowerShell
 
@@ -15,6 +15,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 ```
 
 For daily use, run `Set-ExecutionPolicy -Scope Process Bypass -Force` followed by `./start_surfaceai_windows.ps1`. These scripts never pull from Git automatically. Install the Microsoft Visual C++ Redistributable if TensorFlow reports a missing DLL.
+
+If port 8000 is occupied, use `./start_surfaceai_windows.ps1 -Port 8001` and open `http://127.0.0.1:8001/ui/`.
 
 ## macOS and Linux
 
@@ -28,6 +30,8 @@ python run_desktop.py
 ```
 
 Open `http://127.0.0.1:8000/ui/` if the browser does not open automatically. Use **Select Image** and **Inspect Selected**. The camera stream and hardware controls are expected to be unavailable on regular computers.
+
+If port 8000 is occupied, use `python run_desktop.py --port 8001` and open `http://127.0.0.1:8001/ui/`.
 
 ## Verification
 

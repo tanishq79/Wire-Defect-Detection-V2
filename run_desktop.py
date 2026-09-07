@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import sys
 import threading
 import time
@@ -32,7 +33,12 @@ def open_browser(url: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Start SurfaceAI on any supported desktop OS.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: localhost only).")
-    parser.add_argument("--port", type=int, default=8000, help="Port number (default: 8000).")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("SURFACEAI_PORT", "8000")),
+        help="Port number (default: SURFACEAI_PORT or 8000).",
+    )
     parser.add_argument("--no-browser", action="store_true", help="Do not open the default browser.")
     args = parser.parse_args()
 

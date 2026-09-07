@@ -1,8 +1,78 @@
-# Wire Defect Detection (Version 2)
+# SurfaceAI — Wire Inspection System
 
-## Overview
+SurfaceAI runs in two modes:
 
-Wire Defect Detection V2 is a deep learning-based computer vision system designed to automatically inspect industrial wire surface images and classify them into two categories:
+| Device | What works |
+|---|---|
+| Raspberry Pi 5 | Camera, physical capture button, lead-screw motor, machine counter, reports, and inference |
+| Windows, macOS, Linux | Upload an image, run inference, use the machine counter, and generate reports. Pi-specific camera/GPIO controls are safely unavailable. |
+
+## Run the application
+
+Use **64-bit Python 3.11**. The app stays on the version you installed; it never pulls Git updates automatically. Use **Settings → Software Update** when you deliberately want to update.
+
+### Windows (PowerShell)
+
+First run:
+
+```powershell
+cd "path\to\Wire-Defect-Detection-V2"
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\setup_surfaceai_windows.ps1
+```
+
+Later runs:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\start_surfaceai_windows.ps1
+```
+
+### macOS / Linux
+
+```bash
+cd /path/to/Wire-Defect-Detection-V2
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python run_desktop.py
+```
+
+### Raspberry Pi
+
+After completing [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md), start the installed version with:
+
+```bash
+cd ~/Desktop/Wire-Defect-Detection-V2
+./start_surfaceai_desktop.sh
+```
+
+## If port 8000 is already in use
+
+Port `8000` is the default on every device, including the Raspberry Pi. You do **not** need to edit code to use another port; choose one at launch and open the matching URL.
+
+```powershell
+# Windows
+.\start_surfaceai_windows.ps1 -Port 8001
+```
+
+```bash
+# macOS, Linux, or Raspberry Pi
+SURFACEAI_PORT=8001 python run_desktop.py
+# Pi launcher instead:
+SURFACEAI_PORT=8001 ./start_surfaceai_desktop.sh
+```
+
+Then open `http://127.0.0.1:8001/ui/`. If the page says **connection refused**, read the terminal window first: the server did not start, usually because a dependency or model error was printed there.
+
+For fuller platform notes, see [CROSS_PLATFORM_SETUP.md](CROSS_PLATFORM_SETUP.md).
+
+---
+
+## Model overview
+
+SurfaceAI is a deep learning-based computer vision system designed to automatically inspect industrial wire surface images and classify them into two categories:
 
 - Defected Wire
 - OK Wire
