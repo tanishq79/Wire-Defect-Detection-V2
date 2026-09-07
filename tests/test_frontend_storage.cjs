@@ -59,6 +59,8 @@ assert.match(html, /onclick="changeMachine\(-1\)"/);
 assert.match(html, /onclick="changeMachine\(1\)"/);
 assert.match(source, /machineNumber: inspectionMachine/);
 assert.match(source, /\["Machine Number", lastResult\.machineNumber \|\| 100\]/);
+assert.doesNotMatch(source, /setInterval\(pollMachineCounter/);
+assert.match(source, /orientation: "landscape"/);
 assert.match(html, /id="captureBtn" onclick="captureCamera\(\)"/);
 assert.match(source, /btn\.addEventListener\("pointerdown"/);
 assert.doesNotMatch(source, /btn\.addEventListener\("click", captureCamera\)/);

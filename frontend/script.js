@@ -26,7 +26,6 @@ let completedHardwareCaptureId = null;
 let hardwarePollInFlight = false;
 let captureRequestInFlight = false;
 let machineNumber = 100;
-let machinePollInFlight = false;
 let tuningState = {
     brightness: 0,
     contrast: 0,
@@ -114,21 +113,6 @@ function renderMachineNumber(value, buttons) {
                 ? `Physical + GPIO${buttons.plus_gpio} / − GPIO${buttons.minus_gpio}`
                 : "Touch controls ready"
         );
-    }
-}
-
-async function pollMachineCounter() {
-    if (machinePollInFlight) return;
-    machinePollInFlight = true;
-    try {
-        const res = await fetchWithTimeout(`${API_BASE}/machine`, {}, 2500);
-        if (!res.ok) throw new Error(await readApiError(res));
-        const data = await res.json();
-        renderMachineNumber(data.machine_number, data.buttons);
-    } catch (err) {
-        setText("machineButtonStatus", "Counter connection unavailable");
-    } finally {
-        machinePollInFlight = false;
     }
 }
 
@@ -526,6 +510,9 @@ async function pollHardwareButton() {
         if (!res.ok) return;
         const status = await res.json();
         updateHardwareButtonIndicator(status);
+        if (status.machine) {
+            renderMachineNumber(status.machine.machine_number, status.machine.buttons);
+        }
         if (status.unchanged) return;
         const event = status.last_event;
         if (!event) return;
@@ -1005,7 +992,7 @@ function exportSinglePDF() {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(200, 220, 255);
-    doc.text("SurfaceAI — Automated Wire Defect Detection System", margin, 23);
+    doc.text("SurfaceAI - Automated Wire Defect Detection System", margin, 23);
 
     y = 40;
 
@@ -1158,9 +1145,10 @@ function exportSessionPDF() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
     if (!window.jspdf) { alert("PDF export library is not loaded. Check internet connection or export CSV instead."); return; }
     const { jsPDF } = window.jspdf;
-    const doc    = new jsPDF({ unit: "mm", format: "a4" });
+    const doc    = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
     const pageW  = doc.internal.pageSize.getWidth();
-    const margin = 20;
+    const pageH  = doc.internal.pageSize.getHeight();
+    const margin = 14;
     let y = margin;
 
     // Header
@@ -1169,7 +1157,7 @@ function exportSessionPDF() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
-    doc.text("WIRE INSPECTION — SESSION REPORT", margin, 17);
+    doc.text("WIRE INSPECTION - SESSION REPORT", margin, 17);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(200, 220, 255);
@@ -1233,16 +1221,25 @@ function exportSessionPDF() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(107, 114, 128);
-    const cols = [margin, margin + 9, margin + 25, margin + 65, margin + 91, margin + 143, margin + 165];
+    const cols = [margin, margin + 11, margin + 34, margin + 101, margin + 128, margin + 218, margin + 247];
     const fileMaxWidth = cols[5] - cols[4] - 4;
-    ["#", "MACHINE", "CLASS", "CONF.", "FILE", "TIME", "VERDICT"].forEach((h, i) => doc.text(h, cols[i], y + 4));
-    y += 10;
+    const drawSessionTableHeader = () => {
+        doc.setFillColor(248, 249, 251);
+        doc.rect(margin, y - 2, pageW - margin * 2, 8, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128);
+        ["#", "MACHINE", "CLASS", "CONFIDENCE", "IMAGE FILE", "TIME", "VERDICT"].forEach((h, i) => doc.text(h, cols[i], y + 4));
+        y += 10;
+    };
+    drawSessionTableHeader();
 
     // Table rows
     [...historyLog].reverse().forEach((h, i) => {
-        if (y > 270) {
+        if (y > pageH - 20) {
             doc.addPage();
             y = margin;
+            drawSessionTableHeader();
         }
         const isEven = i % 2 === 0;
         if (isEven) {
@@ -1285,8 +1282,17 @@ function exportSessionPDF() {
     doc.setTextColor(156, 163, 175);
     doc.text(
         `SurfaceAI Wire Inspection System  |  Session started ${new Date(sessionStart).toLocaleTimeString("en-GB", { hour12: false })}`,
-        margin, doc.internal.pageSize.getHeight() - 10
+        margin, pageH - 8
     );
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) {
+        doc.setPage(page);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(156, 163, 175);
+        doc.text(`Page ${page} of ${pageCount}`, pageW - margin, pageH - 8, { align: "right" });
+    }
 
     doc.save(`wireai_session_report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
@@ -1357,11 +1363,9 @@ function clearSession() {
 setInspectionState("neutral");
 bindCaptureButton();
 pollHardwareButton();
-pollMachineCounter();
 // 200 ms makes the on-screen shutter react quickly to a physical press while the
 // in-flight guard guarantees that slow responses never create overlapping polls.
 setInterval(pollHardwareButton, 350);
-setInterval(pollMachineCounter, 500);
 setTimeout(() => {
     startCameraPreview();
 }, 800);

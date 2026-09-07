@@ -129,8 +129,8 @@ STILL_WIDTH = 1600
 STILL_HEIGHT = 1200
 PREVIEW_WIDTH = int(os.getenv("WIRE_PREVIEW_WIDTH", "640"))
 PREVIEW_HEIGHT = int(os.getenv("WIRE_PREVIEW_HEIGHT", "480"))
-STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "8"))))
-STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "68"))))
+STREAM_FPS = max(1, min(30, int(os.getenv("WIRE_STREAM_FPS", "10"))))
+STREAM_JPEG_QUALITY = max(35, min(90, int(os.getenv("WIRE_STREAM_JPEG_QUALITY", "60"))))
 # The live stream uses the lightweight preview configuration, but every
 # inspection capture uses the dedicated 1600x1200 still configuration.
 CAPTURE_MODE = "still"
@@ -502,7 +502,9 @@ class CameraManager:
         if wire_overlay:
             img = draw_wire_overlay(img, processing or build_processing_settings())
         output = io.BytesIO()
-        img.save(output, format="JPEG", quality=STREAM_JPEG_QUALITY, optimize=True)
+        # JPEG optimization is CPU-expensive and provides little value for a
+        # short-lived local preview stream. Standard 4:2:0 encoding is much faster.
+        img.save(output, format="JPEG", quality=STREAM_JPEG_QUALITY, subsampling=2)
         return output.getvalue()
 
     def capture_image(self) -> Image.Image:
@@ -1021,6 +1023,12 @@ async def capture(
 @app.get("/hardware-button/status")
 async def hardware_button_status(after: Optional[str] = None):
     status = hardware_capture_button.status()
+    # Share the lightweight machine state on the existing fast poll so the UI
+    # does not need a second background request every half-second.
+    status["machine"] = {
+        "machine_number": machine_counter.value,
+        "buttons": machine_counter_buttons.status(),
+    }
     event = status.get("last_event")
     if after and event and event.get("id") == after:
         # The browser already consumed this result. Avoid retransmitting and

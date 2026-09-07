@@ -227,6 +227,8 @@ def test_status_ui_history_and_routes(api):
     assert client.post("/machine/decrement").json()["machine_number"] == 100
     assert client.post("/machine/142").json()["machine_number"] == 142
     assert client.post("/machine/0").status_code == 400
+    button_status = client.get("/hardware-button/status").json()
+    assert button_status["machine"]["machine_number"] == 142
     assert client.get("/").status_code == 200
     ui_response = client.get("/ui/script.js")
     assert ui_response.status_code == 200

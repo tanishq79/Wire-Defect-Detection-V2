@@ -287,7 +287,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     background: rgba(20, 83, 45, .42);
     color: #bbf7d0;
     font: 500 11px var(--font-mono);
-    backdrop-filter: blur(10px);
+    backdrop-filter: none;
 }
 .hardware-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; }
 .hardware-indicator.is-checking { border-color: rgba(251,191,36,.34); background: rgba(120,53,15,.4); color: #fde68a; }
@@ -306,7 +306,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     font-size: 13px;
     font-weight: 500;
     letter-spacing: .4px;
-    backdrop-filter: blur(10px);
+    backdrop-filter: none;
 }
 
 .verdict-head {
@@ -323,7 +323,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     border: 1px solid rgba(255,255,255,.14);
     border-radius: 8px;
     background: rgba(15,23,42,.58);
-    backdrop-filter: blur(12px);
+    backdrop-filter: none;
 }
 
 .verdict-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -410,7 +410,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 10px 24px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.18);
-    backdrop-filter: blur(12px);
+    backdrop-filter: none;
     transition: transform .12s ease, background .12s ease, box-shadow .12s ease;
 }
 
@@ -496,7 +496,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     background: rgba(2,6,23,.86);
     color: #f8fafc;
     box-shadow: 0 12px 28px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.12);
-    backdrop-filter: blur(14px);
+    backdrop-filter: none;
     text-align: center;
 }
 
@@ -557,7 +557,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     border-radius: 8px;
     background: rgba(15,23,42,.62);
     color: #fff;
-    backdrop-filter: blur(14px);
+    backdrop-filter: none;
 }
 
 .tuning-head {
@@ -636,7 +636,7 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     background: rgba(15,23,42,.64);
     color: #fff;
     padding: 10px 12px;
-    backdrop-filter: blur(12px);
+    backdrop-filter: none;
 }
 
 .dock-card span { display: block; font-size: 10px; color: rgba(255,255,255,.62); font-family: var(--font-mono); text-transform: uppercase; }
