@@ -1351,21 +1351,45 @@ async function checkSoftwareUpdate() {
 async function applySoftwareUpdate() {
     const status = document.getElementById("softwareUpdateStatus");
     const apply = document.getElementById("applySoftwareUpdate");
-    if (!confirm("Download the approved update from main? The application will need a restart afterward.")) return;
+    if (!confirm("Install the approved update from main? SurfaceAI will stop safely, update, and restart automatically. Do not capture a wire during this process.")) return;
     if (apply) apply.disabled = true;
-    if (status) status.textContent = "Downloading update...";
+    if (status) status.textContent = "Preparing controlled update...";
     try {
         const res = await fetchWithTimeout(`${API_BASE}/software-update/apply`, { method: "POST" }, 45000);
         if (!res.ok) throw new Error(await readApiError(res));
         const data = await res.json();
         if (status) {
-            status.textContent = data.updated
-                ? `Updated to ${data.current_commit}. Close and restart SurfaceAI to use the new version.`
+            status.textContent = data.restart_scheduled
+                ? `Restarting to install ${data.current_commit}. The dashboard will reconnect automatically.`
                 : "Already up to date. No restart is needed.";
         }
+        if (data.restart_scheduled) reconnectAfterSoftwareUpdate();
     } catch (err) {
         if (status) status.textContent = `Update failed: ${err.message || "API error"}`;
     }
+}
+
+function reconnectAfterSoftwareUpdate() {
+    const status = document.getElementById("softwareUpdateStatus");
+    const startedAt = Date.now();
+    const retry = async () => {
+        try {
+            const res = await fetchWithTimeout(`${API_BASE}/status`, {}, 2500);
+            const data = res.ok ? await res.json() : null;
+            if (data?.model_ready) {
+                window.location.reload();
+                return;
+            }
+        } catch (_) {
+            // The old server is expected to be unavailable during restart.
+        }
+        if (Date.now() - startedAt < 120000) {
+            setTimeout(retry, 1500);
+        } else if (status) {
+            status.textContent = "Restart is taking longer than expected. Refresh the page after checking the launcher terminal.";
+        }
+    };
+    setTimeout(retry, 1200);
 }
 
 document.getElementById("cfg-minConf")?.addEventListener("input", e => {

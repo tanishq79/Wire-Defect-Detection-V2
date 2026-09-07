@@ -122,6 +122,33 @@ def software_update_status() -> dict:
         "remote_error": remote_error,
     }
 
+
+def _schedule_update_and_restart(port: int) -> None:
+    """Start an independent updater that stops this server before changing files."""
+    updater = APP_DIR / "update_restart.py"
+    if not updater.is_file():
+        raise HTTPException(status_code=503, detail="The controlled update helper is missing")
+
+    is_pi_station = platform.system() == "Linux" and Path("/proc/device-tree/model").exists()
+    command = [
+        sys.executable,
+        str(updater),
+        "--project-dir", str(APP_DIR),
+        "--server-pid", str(os.getpid()),
+        "--python", sys.executable,
+        "--port", str(port),
+        "--launcher", "pi" if is_pi_station else "desktop",
+    ]
+    options = {"cwd": APP_DIR, "close_fds": True}
+    if platform.system() == "Windows":
+        options["creationflags"] = 0x00000008 | 0x00000200  # detached process + new process group
+    else:
+        options["start_new_session"] = True
+    try:
+        subprocess.Popen(command, **options)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not start controlled updater: {exc}") from exc
+
 def install_keras_legacy_config_shims():
     depthwise_layer = tf.keras.layers.DepthwiseConv2D
     original_from_config = depthwise_layer.from_config
@@ -1064,14 +1091,28 @@ async def apply_software_update(request: Request):
             status_code=409,
             detail="Update blocked because this installation has uncommitted local changes",
         )
-    _git_output("fetch", "origin", "main")
-    _git_output("pull", "--ff-only", "origin", "main")
-    after = software_update_status()
+    if not before["update_available"]:
+        return {
+            "updated": False,
+            "restart_required": False,
+            "before_commit": before["local_commit_short"],
+            "current_commit": before["local_commit_short"],
+            "app_version": APP_VERSION,
+        }
+    if inspection_capture_lock.locked():
+        raise HTTPException(status_code=409, detail="Update blocked while an inspection capture is in progress")
+    hardware_event = (hardware_capture_button.status().get("last_event") or {})
+    if hardware_event.get("state") == "capturing":
+        raise HTTPException(status_code=409, detail="Update blocked while the hardware button is capturing")
+
+    port = request.url.port or 8000
+    _schedule_update_and_restart(port)
     return {
-        "updated": before["local_commit"] != after["local_commit"],
+        "updated": True,
         "restart_required": True,
+        "restart_scheduled": True,
         "before_commit": before["local_commit_short"],
-        "current_commit": after["local_commit_short"],
+        "current_commit": before["remote_commit_short"],
         "app_version": APP_VERSION,
     }
 
