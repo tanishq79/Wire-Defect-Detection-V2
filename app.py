@@ -144,6 +144,12 @@ MOTOR_STEP_PIN = int(os.getenv("WIRE_MOTOR_STEP_GPIO", "18"))
 MOTOR_DIRECTION_PIN = int(os.getenv("WIRE_MOTOR_DIRECTION_GPIO", "24"))
 MOTOR_STEP_DELAY = max(0.0005, float(os.getenv("WIRE_MOTOR_STEP_DELAY", "0.001")))
 MOTOR_MAX_RUN_SECONDS = max(0.5, float(os.getenv("WIRE_MOTOR_MAX_RUN_SECONDS", "10")))
+MACHINE_MIN = 1
+MACHINE_MAX = max(MACHINE_MIN, int(os.getenv("WIRE_MACHINE_MAX", "999")))
+MACHINE_STATE_FILE = INSPECTION_DIR / "machine_state.json"
+MACHINE_BUTTONS_ENABLED = os.getenv("WIRE_MACHINE_BUTTONS_ENABLED", "0").strip().lower() not in {"0", "false", "no", "off"}
+MACHINE_PLUS_BUTTON_PIN = int(os.getenv("WIRE_MACHINE_PLUS_GPIO", "14"))
+MACHINE_MINUS_BUTTON_PIN = int(os.getenv("WIRE_MACHINE_MINUS_GPIO", "15"))
 LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -277,6 +283,7 @@ def log_inspection(result: dict, source: str, source_name: Optional[str] = None)
         "prediction": result["prediction"],
         "confidence": result["confidence"],
         "raw_score": result["raw_score"],
+        "machine_number": result.get("machine_number", MACHINE_MIN),
         "processing": result.get("processing", {}),
         "images": result.get("images", {}),
     }
@@ -515,6 +522,49 @@ camera_manager = CameraManager()
 inspection_capture_lock = threading.Lock()
 
 
+class MachineCounter:
+    """Thread-safe, persistent source-machine selector."""
+
+    def __init__(self, state_file: Path):
+        self.state_file = state_file
+        self._lock = threading.Lock()
+        self._value = MACHINE_MIN
+        self._load()
+
+    def _load(self):
+        try:
+            data = json.loads(self.state_file.read_text(encoding="utf-8"))
+            self._value = max(MACHINE_MIN, min(MACHINE_MAX, int(data["machine_number"])))
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            self._value = MACHINE_MIN
+
+    def _save_locked(self):
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_file.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"machine_number": self._value}) + "\n", encoding="utf-8")
+        temporary.replace(self.state_file)
+
+    @property
+    def value(self) -> int:
+        with self._lock:
+            return self._value
+
+    def set(self, value: int) -> int:
+        with self._lock:
+            self._value = max(MACHINE_MIN, min(MACHINE_MAX, int(value)))
+            self._save_locked()
+            return self._value
+
+    def adjust(self, delta: int) -> int:
+        with self._lock:
+            self._value = max(MACHINE_MIN, min(MACHINE_MAX, self._value + delta))
+            self._save_locked()
+            return self._value
+
+
+machine_counter = MachineCounter(MACHINE_STATE_FILE)
+
+
 def resolve_image_path(path_value: str) -> Path:
     if not path_value:
         raise HTTPException(status_code=400, detail="Missing image path")
@@ -540,9 +590,11 @@ def capture_and_inspect(processing: Optional[dict] = None) -> dict:
     # Touchscreen and GPIO requests share one physical camera and one model.
     # Queue simultaneous requests instead of allowing their operations to race.
     with inspection_capture_lock:
+        machine_number = machine_counter.value
         img = camera_manager.capture_image()
         processing = processing or build_processing_settings()
         result = predict_image(img, processing, "capture")
+        result["machine_number"] = machine_number
         image_path = result["images"]["1600x1200"]["path"]
         result["source"] = "camera"
         result["path"] = str(image_path)
@@ -767,15 +819,72 @@ class LeadScrewController:
         self._close_devices()
 
 
+class MachineCounterButtons:
+    """Optional physical buttons for changing the selected machine number."""
+
+    def __init__(self):
+        self.plus_button = None
+        self.minus_button = None
+        self.last_error = None
+
+    def start(self):
+        if not MACHINE_BUTTONS_ENABLED:
+            print("Machine counter GPIO buttons disabled until their pins are verified", flush=True)
+            return
+        if platform.system() != "Linux":
+            return
+        try:
+            from gpiozero import Button
+
+            self.plus_button = Button(MACHINE_PLUS_BUTTON_PIN, pull_up=True, bounce_time=0.12)
+            self.minus_button = Button(MACHINE_MINUS_BUTTON_PIN, pull_up=True, bounce_time=0.12)
+            self.plus_button.when_pressed = lambda: self._adjust(1)
+            self.minus_button.when_pressed = lambda: self._adjust(-1)
+            print(
+                f"Machine counter buttons ready: + GPIO{MACHINE_PLUS_BUTTON_PIN}, "
+                f"- GPIO{MACHINE_MINUS_BUTTON_PIN}",
+                flush=True,
+            )
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.stop()
+            print(f"Machine counter buttons unavailable: {exc}", flush=True)
+
+    def _adjust(self, delta: int):
+        value = machine_counter.adjust(delta)
+        print(f"Selected source machine: {value}", flush=True)
+
+    def status(self) -> dict:
+        return {
+            "enabled": MACHINE_BUTTONS_ENABLED,
+            "available": self.plus_button is not None and self.minus_button is not None,
+            "plus_gpio": MACHINE_PLUS_BUTTON_PIN,
+            "minus_gpio": MACHINE_MINUS_BUTTON_PIN,
+            "error": self.last_error,
+        }
+
+    def stop(self):
+        for name in ("plus_button", "minus_button"):
+            button = getattr(self, name)
+            if button is not None:
+                try:
+                    button.close()
+                finally:
+                    setattr(self, name, None)
+
+
 hardware_capture_button = HardwareCaptureButton(GPIO_BUTTON_PIN)
 hardware_capture_button.start()
 lead_screw_controller = LeadScrewController()
 lead_screw_controller.start()
+machine_counter_buttons = MachineCounterButtons()
+machine_counter_buttons.start()
 
 
 @app.on_event("shutdown")
 def shutdown_hardware():
     """Release camera and GPIO resources during a controlled server shutdown."""
+    machine_counter_buttons.stop()
     lead_screw_controller.stop()
     hardware_capture_button.stop()
     camera_manager.stop()
@@ -835,6 +944,12 @@ async def status():
         "capture_mode": CAPTURE_MODE,
         "hardware_button": hardware_capture_button.status(),
         "lead_screw": lead_screw_controller.status(),
+        "machine": {
+            "number": machine_counter.value,
+            "minimum": MACHINE_MIN,
+            "maximum": MACHINE_MAX,
+            "buttons": machine_counter_buttons.status(),
+        },
         "ui_available": (APP_DIR / "frontend/index.html").exists(),
     }
 
@@ -854,6 +969,7 @@ async def predict(
     img = open_image_from_bytes(contents)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
     result = predict_image(img, processing, Path(file.filename or "upload").stem)
+    result["machine_number"] = machine_counter.value
     result["source"] = "upload"
     result["filename"] = file.filename
     result["saved_path"] = result["images"]["1600x1200"]["path"]
@@ -873,6 +989,7 @@ async def predict_path(
     img = open_image_from_path(image_path)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
     result = predict_image(img, processing, image_path.stem)
+    result["machine_number"] = machine_counter.value
     result["source"] = "path"
     result["path"] = str(image_path)
     result["log"] = log_inspection(result, "path", str(image_path))
@@ -914,6 +1031,33 @@ async def hardware_button_status(after: Optional[str] = None):
 @app.get("/motor/status")
 async def motor_status():
     return lead_screw_controller.status()
+
+
+@app.get("/machine")
+async def machine_status():
+    return {
+        "machine_number": machine_counter.value,
+        "minimum": MACHINE_MIN,
+        "maximum": MACHINE_MAX,
+        "buttons": machine_counter_buttons.status(),
+    }
+
+
+@app.post("/machine/increment")
+async def increment_machine():
+    return {"machine_number": machine_counter.adjust(1)}
+
+
+@app.post("/machine/decrement")
+async def decrement_machine():
+    return {"machine_number": machine_counter.adjust(-1)}
+
+
+@app.post("/machine/{number}")
+async def set_machine(number: int):
+    if not MACHINE_MIN <= number <= MACHINE_MAX:
+        raise HTTPException(status_code=400, detail=f"Machine number must be {MACHINE_MIN}-{MACHINE_MAX}")
+    return {"machine_number": machine_counter.set(number)}
 
 
 @app.get("/camera/status")

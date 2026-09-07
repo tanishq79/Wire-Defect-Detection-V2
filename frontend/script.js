@@ -25,6 +25,8 @@ let hardwareCaptureId = null;
 let completedHardwareCaptureId = null;
 let hardwarePollInFlight = false;
 let captureRequestInFlight = false;
+let machineNumber = 1;
+let machinePollInFlight = false;
 let tuningState = {
     brightness: 0,
     contrast: 0,
@@ -99,6 +101,46 @@ function tick() {
 }
 tick();
 setInterval(tick, 1000);
+
+function renderMachineNumber(value, buttons) {
+    machineNumber = Math.max(1, parseInt(value, 10) || 1);
+    setText("machineNumber", machineNumber);
+    if (buttons) {
+        setText(
+            "machineButtonStatus",
+            buttons.available
+                ? `Physical + GPIO${buttons.plus_gpio} / − GPIO${buttons.minus_gpio}`
+                : "Touch controls ready"
+        );
+    }
+}
+
+async function pollMachineCounter() {
+    if (machinePollInFlight) return;
+    machinePollInFlight = true;
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/machine`, {}, 2500);
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        renderMachineNumber(data.machine_number, data.buttons);
+    } catch (err) {
+        setText("machineButtonStatus", "Counter connection unavailable");
+    } finally {
+        machinePollInFlight = false;
+    }
+}
+
+async function changeMachine(delta) {
+    const action = delta > 0 ? "increment" : "decrement";
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/machine/${action}`, { method: "POST" }, 2500);
+        if (!res.ok) throw new Error(await readApiError(res));
+        const data = await res.json();
+        renderMachineNumber(data.machine_number);
+    } catch (err) {
+        alert(`Machine counter failed: ${err.message || "API error"}`);
+    }
+}
 
 // ══════════════════════════════════════════════════════════════
 //  LIVE STATUS POLL  (hits /status every 4 s)
@@ -643,7 +685,8 @@ function applyPredictionResult(data, sourceName) {
     document.getElementById("actionText").textContent = noteText;
 
     // ── Save last result for single PDF ───────────────────────
-    lastResult = { prediction: finalPrediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label };
+    const inspectionMachine = Math.max(1, parseInt(data.machine_number, 10) || machineNumber);
+    lastResult = { prediction: finalPrediction, confidence, timeStr, dateStr, fileName, verdict: m.verdict, label: m.label, machineNumber: inspectionMachine };
 
     // ── Session counters ──────────────────────────────────────
     total++;
@@ -656,7 +699,7 @@ function applyPredictionResult(data, sourceName) {
     document.getElementById("defectRate").textContent  = total > 0 ? ((defects / total) * 100).toFixed(0) + "%" : "—";
 
     // ── History ───────────────────────────────────────────────
-    historyLog.unshift({ prediction, classLabel: m.label, confidence, time: timeStr, date: dateStr, fileName, color: m.color, verdict: m.verdict });
+    historyLog.unshift({ prediction, classLabel: m.label, confidence, time: timeStr, date: dateStr, fileName, color: m.color, verdict: m.verdict, machineNumber: inspectionMachine });
     try {
         renderHistory();
         updateBarChart();
@@ -884,7 +927,7 @@ function refreshReports() {
 
     const tbody = document.getElementById("reportBody");
     if (!historyLog.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty-td">No data yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-td">No data yet.</td></tr>`;
         return;
     }
     tbody.innerHTML = historyLog.map((h, i) => {
@@ -892,6 +935,7 @@ function refreshReports() {
         const vClass = h.verdict === "PASS" ? "verdict-pass" : "verdict-flag";
         return `<tr>
             <td style="font-family:var(--font-mono);color:var(--text-muted)">${historyLog.length - i}</td>
+            <td style="font-family:var(--font-mono);font-weight:700">${h.machineNumber || 1}</td>
             <td><span class="td-class" style="background:${m.bg};color:${m.color};border-color:${m.border}">${h.classLabel}</span></td>
             <td style="font-family:var(--font-mono)">${h.confidence}%</td>
             <td style="font-family:var(--font-mono);color:var(--text-muted);font-size:11px">${h.fileName || "—"}</td>
@@ -903,9 +947,9 @@ function refreshReports() {
 
 function exportCSV() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
-    const header = ["#", "Class", "Confidence (%)", "File Name", "Time", "Verdict"];
+    const header = ["#", "Machine", "Class", "Confidence (%)", "File Name", "Time", "Verdict"];
     const rows   = historyLog.map((h, i) => [
-        historyLog.length - i, h.classLabel, h.confidence, h.fileName || "", h.time, h.verdict
+        historyLog.length - i, h.machineNumber || 1, h.classLabel, h.confidence, h.fileName || "", h.time, h.verdict
     ]);
     const csv  = [header, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1017,6 +1061,7 @@ function exportSinglePDF() {
     y += 8;
 
     const rows = [
+        ["Machine Number", lastResult.machineNumber || 1],
         ["File Name",    lastResult.fileName],
         ["Inspection Date", lastResult.dateStr],
         ["Inspection Time", lastResult.timeStr],
@@ -1167,9 +1212,9 @@ function exportSessionPDF() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(107, 114, 128);
-    const cols = [margin, margin + 10, margin + 60, margin + 88, margin + 145, margin + 166];
-    const fileMaxWidth = cols[4] - cols[3] - 5;
-    ["#", "CLASS", "CONFIDENCE", "FILE", "TIME", "VERDICT"].forEach((h, i) => doc.text(h, cols[i], y + 4));
+    const cols = [margin, margin + 9, margin + 25, margin + 65, margin + 91, margin + 143, margin + 165];
+    const fileMaxWidth = cols[5] - cols[4] - 4;
+    ["#", "MACHINE", "CLASS", "CONF.", "FILE", "TIME", "VERDICT"].forEach((h, i) => doc.text(h, cols[i], y + 4));
     y += 10;
 
     // Table rows
@@ -1190,20 +1235,25 @@ function exportSessionPDF() {
         doc.setTextColor(107, 114, 128);
         doc.text(String(i + 1), cols[0], y + 3);
 
+        doc.setTextColor(17, 24, 39);
+        doc.setFont("helvetica", "bold");
+        doc.text(String(h.machineNumber || 1), cols[1], y + 3);
+
         doc.setTextColor(...(isDefected ? [220, 38, 38] : [5, 150, 105]));
-        doc.text(h.classLabel, cols[1], y + 3);
+        doc.setFont("helvetica", "normal");
+        doc.text(h.classLabel, cols[2], y + 3);
 
         doc.setTextColor(17, 24, 39);
-        doc.text(h.confidence + "%", cols[2], y + 3);
+        doc.text(h.confidence + "%", cols[3], y + 3);
 
         doc.setTextColor(107, 114, 128);
         const fn = fitPdfText(doc, h.fileName || "-", fileMaxWidth);
-        doc.text(fn, cols[3], y + 3);
-        doc.text(h.time, cols[4], y + 3);
+        doc.text(fn, cols[4], y + 3);
+        doc.text(h.time, cols[5], y + 3);
 
         doc.setTextColor(...(h.verdict === "PASS" ? [5, 150, 105] : [220, 38, 38]));
         doc.setFont("helvetica", "bold");
-        doc.text(h.verdict, cols[5], y + 3);
+        doc.text(h.verdict, cols[6], y + 3);
 
         y += 7;
     });
@@ -1282,9 +1332,11 @@ function clearSession() {
 setInspectionState("neutral");
 bindCaptureButton();
 pollHardwareButton();
+pollMachineCounter();
 // 200 ms makes the on-screen shutter react quickly to a physical press while the
 // in-flight guard guarantees that slow responses never create overlapping polls.
 setInterval(pollHardwareButton, 350);
+setInterval(pollMachineCounter, 500);
 setTimeout(() => {
     startCameraPreview();
 }, 800);

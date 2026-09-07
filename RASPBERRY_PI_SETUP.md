@@ -146,6 +146,37 @@ export WIRE_MOTOR_MAX_RUN_SECONDS=10
 
 Set `WIRE_MOTOR_ENABLED=0` before launching the app to disable all motor control.
 
+### Source-machine counter
+
+The bottom-right counter selects the machine from which the test wire was taken.
+Use its touchscreen `+` and `-` controls before capturing. The selected number is
+stored across restarts and is recorded with every inspection, CSV, and PDF report.
+
+For the two future physical counter controls, use momentary normally-open
+pushbuttons. GPIO14 (physical pin 8) and GPIO15 (physical pin 10) are the proposed
+inputs, with the other terminal of each button connected to GND. **Do not connect
+them until both pins have been verified as unused**, because these pins can also
+be assigned to the UART:
+
+```bash
+for pin in 14 15; do pinctrl get "$pin"; done
+gpioinfo -c gpiochip0 | grep -E 'line +(14|15):'
+```
+
+Send the output for confirmation. After wiring is confirmed, enable them before
+starting SurfaceAI:
+
+```bash
+export WIRE_MACHINE_BUTTONS_ENABLED=1
+export WIRE_MACHINE_PLUS_GPIO=14
+export WIRE_MACHINE_MINUS_GPIO=15
+bash ./start_surfaceai_desktop.sh
+```
+
+The physical buttons are disabled by default; the on-screen counter works without
+them. This prevents the application from taking UART pins before their current
+allocation has been checked.
+
 All new inspection images live in one main folder, `images/` beside `app.py`:
 
 ```text

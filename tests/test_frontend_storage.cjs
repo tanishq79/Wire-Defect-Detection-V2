@@ -54,6 +54,11 @@ console.log('3 frontend storage scenarios passed (saved image, live stream, lega
 // Capture controls use one explicit event binding (instead of an inline handler),
 // give immediate pointer feedback, and prevent slow status requests from stacking.
 assert.match(html, /<button type="button" class="capture-btn" id="captureBtn"/);
+assert.match(html, /id="machineNumber">1</);
+assert.match(html, /onclick="changeMachine\(-1\)"/);
+assert.match(html, /onclick="changeMachine\(1\)"/);
+assert.match(source, /machineNumber: inspectionMachine/);
+assert.match(source, /\["Machine Number", lastResult\.machineNumber \|\| 1\]/);
 assert.match(html, /id="captureBtn" onclick="captureCamera\(\)"/);
 assert.match(source, /btn\.addEventListener\("pointerdown"/);
 assert.doesNotMatch(source, /btn\.addEventListener\("click", captureCamera\)/);

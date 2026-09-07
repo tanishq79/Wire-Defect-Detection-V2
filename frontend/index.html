@@ -167,6 +167,16 @@
                         <span>Defect Rate</span><strong id="defectRate">--</strong>
                     </div>
                 </div>
+
+                <div class="machine-counter" aria-label="Selected source machine">
+                    <span class="machine-counter-label">Machine</span>
+                    <div class="machine-counter-controls">
+                        <button type="button" onclick="changeMachine(-1)" aria-label="Previous machine">−</button>
+                        <strong id="machineNumber">1</strong>
+                        <button type="button" onclick="changeMachine(1)" aria-label="Next machine">+</button>
+                    </div>
+                    <small id="machineButtonStatus">Touch controls ready</small>
+                </div>
             </div>
 
             <div class="operator-drawer">
@@ -289,8 +299,8 @@
                     <div class="panel-header"><span class="panel-title">Full Log</span></div>
                     <div class="timeline-table-wrap">
                         <table class="timeline-table">
-                            <thead><tr><th>#</th><th>Class</th><th>Confidence</th><th>File</th><th>Time</th><th>Verdict</th></tr></thead>
-                            <tbody id="reportBody"><tr><td colspan="6" class="empty-td">No data yet.</td></tr></tbody>
+                            <thead><tr><th>#</th><th>Machine</th><th>Class</th><th>Confidence</th><th>File</th><th>Time</th><th>Verdict</th></tr></thead>
+                            <tbody id="reportBody"><tr><td colspan="7" class="empty-td">No data yet.</td></tr></tbody>
                         </table>
                     </div>
                 </div>

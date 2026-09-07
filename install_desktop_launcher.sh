@@ -18,7 +18,7 @@ Type=Application
 Name=SurfaceAI
 Comment=Start SurfaceAI wire inspection
 Path=$APP_DIR
-Exec=lxterminal -t SurfaceAI -e bash -lc 'SURFACEAI_UPDATE_ON_START=1 $APP_DIR/start_surfaceai_desktop.sh'
+Exec=lxterminal -t SurfaceAI -e bash -lc 'SURFACEAI_UPDATE_ON_START=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh'
 Icon=applications-graphics
 Terminal=false
 Categories=Utility;
@@ -34,7 +34,7 @@ Type=Application
 Name=SurfaceAI Kiosk
 Comment=Start SurfaceAI automatically in full-screen kiosk mode
 Path=$APP_DIR
-Exec=env SURFACEAI_KIOSK=1 $APP_DIR/start_surfaceai_desktop.sh
+Exec=env SURFACEAI_KIOSK=1 /usr/bin/bash $APP_DIR/start_surfaceai_desktop.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF

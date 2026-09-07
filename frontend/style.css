@@ -484,6 +484,63 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 
 .capture-btn:disabled { cursor: wait; opacity: .92; }
 
+.machine-counter {
+    position: absolute;
+    z-index: 7;
+    right: 100px;
+    bottom: 18px;
+    min-width: 190px;
+    padding: 10px 12px 8px;
+    border: 1px solid rgba(125,211,252,.55);
+    border-radius: 10px;
+    background: rgba(2,6,23,.86);
+    color: #f8fafc;
+    box-shadow: 0 12px 28px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.12);
+    backdrop-filter: blur(14px);
+    text-align: center;
+}
+
+.machine-counter-label {
+    display: block;
+    color: #7dd3fc;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+
+.machine-counter-controls {
+    display: grid;
+    grid-template-columns: 42px 1fr 42px;
+    align-items: center;
+    gap: 7px;
+    margin-top: 4px;
+}
+
+.machine-counter-controls strong {
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 34px;
+    line-height: 40px;
+    text-shadow: 0 0 18px rgba(56,189,248,.55);
+}
+
+.machine-counter-controls button {
+    height: 38px;
+    border: 1px solid rgba(255,255,255,.24);
+    border-radius: 8px;
+    background: rgba(30,41,59,.9);
+    color: #fff;
+    font-size: 25px;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.machine-counter-controls button:active { transform: translateY(2px) scale(.96); }
+.machine-counter small { display: block; margin-top: 2px; color: rgba(255,255,255,.55); font-size: 9px; }
+
 @keyframes capture-pulse {
     from { transform: scale(.72); opacity: .7; }
     to { transform: scale(1.2); opacity: 0; }
