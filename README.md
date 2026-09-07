@@ -307,6 +307,16 @@ This generates:
 
 ## Running the API
 
+For Windows, macOS, and standard Linux computers, use the native Python launcher
+for upload-based inspection. Raspberry Pi camera and GPIO hardware are optional:
+
+```bash
+python run_desktop.py
+```
+
+See [Cross-platform manual inspection](CROSS_PLATFORM_SETUP.md) for first-time
+installation and verification commands.
+
 Runtime inspection images use one main `images/` folder containing `1600x1200/`,
 `640x320/`, and `224x224/`. Upload, stored-path, camera, and GPIO inspections all
 save linked variants there. See [Image storage and compatibility](IMAGE_STORAGE.md)

@@ -1181,11 +1181,7 @@ function exportSessionPDF() {
     doc.setFontSize(11);
     doc.setTextColor(17, 24, 39);
     doc.text("SESSION SUMMARY", margin, y);
-    y += 6;
-    doc.setDrawColor(228, 231, 237);
-    doc.setLineWidth(0.3);
-    doc.line(margin, y, pageW - margin, y);
-    y += 6;
+    y += 10;
 
     summaryItems.forEach(([key, val]) => {
         doc.setFont("helvetica", "bold");
@@ -1197,9 +1193,6 @@ function exportSessionPDF() {
         doc.setTextColor(17, 24, 39);
         doc.text(String(val), margin + 60, y);
         y += 7;
-        doc.setDrawColor(240, 242, 245);
-        doc.setLineWidth(0.15);
-        doc.line(margin, y - 2, pageW - margin, y - 2);
     });
 
     y += 8;

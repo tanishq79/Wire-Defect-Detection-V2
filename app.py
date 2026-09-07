@@ -28,7 +28,16 @@ import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, UnidentifiedImageError
 from image_storage import APP_DIR, IMAGE_SIZES, ImageStore, configured_path
 
-app = FastAPI(title="SurfaceAI Wire Inspection API", version="2.1")
+APP_VERSION = "2.2"
+DEFAULT_ALLOWED_ORIGINS = "http://127.0.0.1:8000,http://localhost:8000"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("WIRE_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+MAX_UPLOAD_BYTES = max(1_000_000, int(os.getenv("WIRE_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))))
+
+app = FastAPI(title="SurfaceAI Wire Inspection API", version=APP_VERSION)
 
 
 @app.middleware("http")
@@ -40,11 +49,11 @@ async def prevent_stale_frontend_assets(request, call_next):
         response.headers["Expires"] = "0"
     return response
 
-# Enable CORS
+# The dashboard is served from this API, so cross-origin access is opt-in.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -941,6 +950,9 @@ async def status():
         "platform": platform.platform(),
         "tensorflow_version": tf.__version__,
         "gpu_available": bool(tf.config.list_physical_devices("GPU")),
+        "app_version": APP_VERSION,
+        "allowed_origins": ALLOWED_ORIGINS,
+        "max_upload_bytes": MAX_UPLOAD_BYTES,
         "image_root": str(IMAGE_ROOT),
         "image_directories": {key: str(IMAGE_ROOT / key) for key in IMAGE_SIZES},
         "inspection_dir": str(INSPECTION_DIR),
@@ -969,9 +981,12 @@ async def predict(
     mask_strength: float = Form(0),
 ):
 
-    contents = await file.read()
+    contents = await file.read(MAX_UPLOAD_BYTES + 1)
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(contents) > MAX_UPLOAD_BYTES:
+        limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the {limit_mb} MB limit")
 
     img = open_image_from_bytes(contents)
     processing = build_processing_settings(brightness, contrast, sharpness, mask_strength)
