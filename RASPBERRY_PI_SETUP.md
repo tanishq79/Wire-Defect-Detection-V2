@@ -151,12 +151,12 @@ Set `WIRE_MOTOR_ENABLED=0` before launching the app to disable all motor control
 The bottom-right counter selects the machine from which the test wire was taken.
 Use its touchscreen `+` and `-` controls before capturing. The selected number is
 stored across restarts and is recorded with every inspection, CSV, and PDF report.
-It starts at machine 100. A worker can also type any machine number from 100 to
-999 in Settings and press Apply. New image bundles use readable local timestamps:
+It starts at machine 100 and advances through 200, 300, and so on up to 900. A
+worker can also select one of those values in Settings and press Apply. New image bundles use readable local timestamps:
 `YYYY-MM-DD_HH-MM-SS-microseconds_machine-N.png`.
 
-For the two future physical counter controls, use momentary normally-open
-pushbuttons. GPIO14 (physical pin 8) and GPIO15 (physical pin 10) are the proposed
+For the two physical counter controls, use momentary normally-open pushbuttons.
+GPIO14 (physical pin 8) and GPIO15 (physical pin 10) are the default
 inputs, with the other terminal of each button connected to GND. **Do not connect
 them until both pins have been verified as unused**, because these pins can also
 be assigned to the UART:
@@ -166,19 +166,16 @@ for pin in 14 15; do pinctrl get "$pin"; done
 gpioinfo -c gpiochip0 | grep -E 'line +(14|15):'
 ```
 
-Send the output for confirmation. After wiring is confirmed, enable them before
-starting SurfaceAI:
+After wiring is confirmed, the Raspberry Pi launchers enable these buttons
+automatically:
 
 ```bash
-export WIRE_MACHINE_BUTTONS_ENABLED=1
-export WIRE_MACHINE_PLUS_GPIO=14
-export WIRE_MACHINE_MINUS_GPIO=15
-bash ./start_surfaceai_desktop.sh
+source .venv/bin/activate
+./run_pi.sh
 ```
 
-The physical buttons are disabled by default; the on-screen counter works without
-them. This prevents the application from taking UART pins before their current
-allocation has been checked.
+To disable the physical buttons on a Pi that uses GPIO14/GPIO15 for UART, launch
+with `WIRE_MACHINE_BUTTONS_ENABLED=0`. The on-screen counter works independently.
 
 All new inspection images live in one main folder, `images/` beside `app.py`:
 

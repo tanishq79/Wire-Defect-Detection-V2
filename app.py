@@ -123,6 +123,33 @@ def software_update_status() -> dict:
     }
 
 
+def _schedule_update_and_restart(port: int) -> None:
+    """Start an independent updater that stops this server before changing files."""
+    updater = APP_DIR / "update_restart.py"
+    if not updater.is_file():
+        raise HTTPException(status_code=503, detail="The controlled update helper is missing")
+
+    is_pi_station = platform.system() == "Linux" and Path("/proc/device-tree/model").exists()
+    command = [
+        sys.executable,
+        str(updater),
+        "--project-dir", str(APP_DIR),
+        "--server-pid", str(os.getpid()),
+        "--python", sys.executable,
+        "--port", str(port),
+        "--launcher", "pi" if is_pi_station else "desktop",
+    ]
+    options = {"cwd": APP_DIR, "close_fds": True}
+    if platform.system() == "Windows":
+        options["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        options["start_new_session"] = True
+    try:
+        subprocess.Popen(command, **options)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not start controlled updater: {exc}") from exc
+
+
 def install_keras_legacy_config_shims():
     depthwise_layer = tf.keras.layers.DepthwiseConv2D
     original_from_config = depthwise_layer.from_config
@@ -265,8 +292,9 @@ MOTOR_STEP_PIN = int(os.getenv("WIRE_MOTOR_STEP_GPIO", "18"))
 MOTOR_DIRECTION_PIN = int(os.getenv("WIRE_MOTOR_DIRECTION_GPIO", "24"))
 MOTOR_STEP_DELAY = max(0.0005, float(os.getenv("WIRE_MOTOR_STEP_DELAY", "0.001")))
 MOTOR_MAX_RUN_SECONDS = max(0.5, float(os.getenv("WIRE_MOTOR_MAX_RUN_SECONDS", "10")))
-MACHINE_MIN = max(1, int(os.getenv("WIRE_MACHINE_MIN", "100")))
-MACHINE_MAX = max(MACHINE_MIN, int(os.getenv("WIRE_MACHINE_MAX", "999")))
+MACHINE_MIN = 100
+MACHINE_MAX = 900
+MACHINE_STEP = 100
 MACHINE_STATE_FILE = INSPECTION_DIR / "machine_state.json"
 MACHINE_BUTTONS_ENABLED = os.getenv("WIRE_MACHINE_BUTTONS_ENABLED", "0").strip().lower() not in {"0", "false", "no", "off"}
 MACHINE_PLUS_BUTTON_PIN = int(os.getenv("WIRE_MACHINE_PLUS_GPIO", "14"))
@@ -663,9 +691,15 @@ class MachineCounter:
     def _load(self):
         try:
             data = json.loads(self.state_file.read_text(encoding="utf-8"))
-            self._value = max(MACHINE_MIN, min(MACHINE_MAX, int(data["machine_number"])))
+            self._value = self._normalize(data["machine_number"])
         except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             self._value = MACHINE_MIN
+
+    @staticmethod
+    def _normalize(value: int) -> int:
+        bounded = max(MACHINE_MIN, min(MACHINE_MAX, int(value)))
+        step_index = (bounded - MACHINE_MIN + MACHINE_STEP // 2) // MACHINE_STEP
+        return min(MACHINE_MAX, MACHINE_MIN + step_index * MACHINE_STEP)
 
     def _save_locked(self):
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -680,13 +714,13 @@ class MachineCounter:
 
     def set(self, value: int) -> int:
         with self._lock:
-            self._value = max(MACHINE_MIN, min(MACHINE_MAX, int(value)))
+            self._value = self._normalize(value)
             self._save_locked()
             return self._value
 
     def adjust(self, delta: int) -> int:
         with self._lock:
-            self._value = max(MACHINE_MIN, min(MACHINE_MAX, self._value + delta))
+            self._value = max(MACHINE_MIN, min(MACHINE_MAX, self._value + int(delta) * MACHINE_STEP))
             self._save_locked()
             return self._value
 
@@ -1065,14 +1099,28 @@ async def apply_software_update(request: Request):
             status_code=409,
             detail="Update blocked because this installation has uncommitted local changes",
         )
-    _git_output("fetch", "origin", "main")
-    _git_output("pull", "--ff-only", "origin", "main")
-    after = software_update_status()
+    if not before["update_available"]:
+        return {
+            "updated": False,
+            "restart_required": False,
+            "before_commit": before["local_commit_short"],
+            "current_commit": before["local_commit_short"],
+            "app_version": APP_VERSION,
+        }
+    if inspection_capture_lock.locked():
+        raise HTTPException(status_code=409, detail="Update blocked while an inspection capture is in progress")
+    hardware_event = hardware_capture_button.status().get("last_event") or {}
+    if hardware_event.get("state") == "capturing":
+        raise HTTPException(status_code=409, detail="Update blocked while the hardware button is capturing")
+
+    port = request.url.port or 8000
+    _schedule_update_and_restart(port)
     return {
-        "updated": before["local_commit"] != after["local_commit"],
+        "updated": True,
         "restart_required": True,
+        "restart_scheduled": True,
         "before_commit": before["local_commit_short"],
-        "current_commit": after["local_commit_short"],
+        "current_commit": before["remote_commit_short"],
         "app_version": APP_VERSION,
     }
 
@@ -1105,6 +1153,7 @@ async def status():
             "number": machine_counter.value,
             "minimum": MACHINE_MIN,
             "maximum": MACHINE_MAX,
+            "step": MACHINE_STEP,
             "buttons": machine_counter_buttons.status(),
         },
         "ui_available": (APP_DIR / "frontend/index.html").exists(),
@@ -1208,6 +1257,7 @@ async def machine_status():
         "machine_number": machine_counter.value,
         "minimum": MACHINE_MIN,
         "maximum": MACHINE_MAX,
+        "step": MACHINE_STEP,
         "buttons": machine_counter_buttons.status(),
     }
 
@@ -1224,8 +1274,8 @@ async def decrement_machine():
 
 @app.post("/machine/{number}")
 async def set_machine(number: int):
-    if not MACHINE_MIN <= number <= MACHINE_MAX:
-        raise HTTPException(status_code=400, detail=f"Machine number must be {MACHINE_MIN}-{MACHINE_MAX}")
+    if not MACHINE_MIN <= number <= MACHINE_MAX or number % MACHINE_STEP:
+        raise HTTPException(status_code=400, detail="Machine number must be 100, 200, ..., or 900")
     return {"machine_number": machine_counter.set(number)}
 
 

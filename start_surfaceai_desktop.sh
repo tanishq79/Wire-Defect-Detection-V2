@@ -9,6 +9,12 @@ KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
 UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
 SERVER_PID=""
 
+# Enable the installed physical machine counter buttons by default. These can
+# still be overridden for a Pi that uses GPIO14/GPIO15 for UART or other hardware.
+export WIRE_MACHINE_BUTTONS_ENABLED="${WIRE_MACHINE_BUTTONS_ENABLED:-1}"
+export WIRE_MACHINE_PLUS_GPIO="${WIRE_MACHINE_PLUS_GPIO:-14}"
+export WIRE_MACHINE_MINUS_GPIO="${WIRE_MACHINE_MINUS_GPIO:-15}"
+
 cleanup() {
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "Stopping SurfaceAI server..."
