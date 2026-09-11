@@ -430,6 +430,16 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
     background: rgba(2,6,23,.92);
 }
 
+.rail-btn-stop {
+    color: #fecaca;
+    border-color: rgba(248,113,113,.7);
+    background: rgba(127,29,29,.85);
+}
+
+.rail-btn-stop:hover {
+    background: rgba(153,27,27,.95);
+}
+
 .capture-btn {
     position: relative;
     width: 78px;

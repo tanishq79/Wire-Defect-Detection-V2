@@ -69,6 +69,7 @@ assert.match(source, /setInterval\(pollHardwareButton, 350\)/);
 assert.match(source, /updateHardwareButtonIndicator\(status\)/);
 assert.match(html, /id="hardwareButtonIndicator"/);
 assert.match(html, /id="stopApplication"/);
+assert.match(html, /aria-label="Stop SurfaceAI"/);
 assert.match(source, /function stopApplication\(\)/);
 assert.match(source, /\/application\/stop/);
 assert.doesNotMatch(source, /AbortSignal\.timeout/);
