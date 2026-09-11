@@ -8,6 +8,7 @@ URL="http://127.0.0.1:${PORT}"
 KIOSK_MODE="${SURFACEAI_KIOSK:-0}"
 UPDATE_ON_START="${SURFACEAI_UPDATE_ON_START:-0}"
 SERVER_PID=""
+BROWSER_PID=""
 
 # Enable the installed physical machine counter buttons by default. These can
 # still be overridden for a Pi that uses GPIO14/GPIO15 for UART or other hardware.
@@ -20,6 +21,10 @@ cleanup() {
     echo "Stopping SurfaceAI server..."
     kill "$SERVER_PID"
     wait "$SERVER_PID" 2>/dev/null || true
+  fi
+  if [ -n "$BROWSER_PID" ] && kill -0 "$BROWSER_PID" 2>/dev/null; then
+    echo "Closing SurfaceAI browser..."
+    kill "$BROWSER_PID" 2>/dev/null || true
   fi
 }
 
@@ -103,10 +108,13 @@ fi
 
 if command -v chromium-browser >/dev/null 2>&1; then
   chromium-browser "${CHROMIUM_FLAGS[@]}" >/dev/null 2>&1 &
+  BROWSER_PID=$!
 elif command -v chromium >/dev/null 2>&1; then
   chromium "${CHROMIUM_FLAGS[@]}" >/dev/null 2>&1 &
+  BROWSER_PID=$!
 elif command -v xdg-open >/dev/null 2>&1; then
   xdg-open "$URL" >/dev/null 2>&1 &
+  BROWSER_PID=$!
 else
   echo "Open this URL manually: $URL"
 fi

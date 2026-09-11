@@ -394,6 +394,17 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">APPLICATION</div>
+                    <div class="settings-row">
+                        <label class="settings-label">Stop SurfaceAI</label>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                            <button type="button" class="btn-danger" id="stopApplication" onclick="stopApplication()">Stop Application</button>
+                        </div>
+                        <p class="settings-hint" id="stopApplicationStatus">Safely stops SurfaceAI and releases the camera and motor GPIO pins. It will start again after the next reboot.</p>
+                    </div>
+                </div>
             </div>
         </div>
 

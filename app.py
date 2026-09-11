@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -97,6 +98,16 @@ def _require_local_update_request(request: Request) -> None:
     # Pulling source code is deliberately limited to the computer running the app.
     if request.client and request.client.host not in {"127.0.0.1", "::1", "testclient"}:
         raise HTTPException(status_code=403, detail="Software updates are available only from the local computer")
+
+
+def _schedule_server_shutdown() -> None:
+    """Stop Uvicorn just after an HTTP response has been returned to the kiosk."""
+    def stop() -> None:
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    timer = threading.Timer(0.25, stop)
+    timer.daemon = True
+    timer.start()
 
 
 def software_update_status() -> dict:
@@ -1123,6 +1134,20 @@ async def apply_software_update(request: Request):
         "current_commit": before["remote_commit_short"],
         "app_version": APP_VERSION,
     }
+
+
+@app.post("/application/stop")
+async def stop_application(request: Request):
+    """Safely stop this local station and release its camera and GPIO hardware."""
+    _require_local_update_request(request)
+    if inspection_capture_lock.locked():
+        raise HTTPException(status_code=409, detail="Stop blocked while an inspection capture is in progress")
+    hardware_event = hardware_capture_button.status().get("last_event") or {}
+    if hardware_event.get("state") == "capturing":
+        raise HTTPException(status_code=409, detail="Stop blocked while the hardware button is capturing")
+
+    _schedule_server_shutdown()
+    return {"stopping": True, "message": "SurfaceAI is stopping and releasing the camera and GPIO pins."}
 
 @app.get("/status")
 async def status():

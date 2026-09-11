@@ -1371,6 +1371,23 @@ async function applySoftwareUpdate() {
     }
 }
 
+async function stopApplication() {
+    const button = document.getElementById("stopApplication");
+    const status = document.getElementById("stopApplicationStatus");
+    if (!confirm("Stop SurfaceAI now? Camera capture, inspection, and motor buttons will stop until you reboot or start SurfaceAI again.")) return;
+    if (button) button.disabled = true;
+    if (status) status.textContent = "Stopping SurfaceAI and releasing hardware...";
+    try {
+        const res = await fetchWithTimeout(`${API_BASE}/application/stop`, { method: "POST" }, 5000);
+        if (!res.ok) throw new Error(await readApiError(res));
+        if (status) status.textContent = "SurfaceAI stopped. This screen will close shortly.";
+        setTimeout(() => window.close(), 800);
+    } catch (err) {
+        if (button) button.disabled = false;
+        if (status) status.textContent = `Could not stop SurfaceAI: ${err.message || "API error"}`;
+    }
+}
+
 function reconnectAfterSoftwareUpdate() {
     const status = document.getElementById("softwareUpdateStatus");
     const startedAt = Date.now();
