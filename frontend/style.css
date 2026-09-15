@@ -193,6 +193,20 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--bg);
 .report-hero-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--text-primary); }
 .report-hero-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
 .report-actions { margin-left: auto; display: flex; gap: 8px; }
+.report-operation-status { display: none; align-items: center; gap: 10px; margin: -4px 0 16px; padding: 12px 15px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; }
+.report-operation-status.is-success { display: flex; color: #166534; background: var(--green-light); border: 1px solid #86efac; }
+.report-operation-status.is-error { display: flex; color: #991b1b; background: var(--red-light); border: 1px solid #fecaca; }
+.report-operation-status.is-working { display: flex; color: #1e40af; background: var(--accent-light); border: 1px solid #bfdbfe; }
+.report-status-tick { width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: white; background: var(--green); font-weight: 800; font-size: 15px; animation: report-tick-in .34s ease-out both; }
+@keyframes report-tick-in { from { opacity: 0; transform: scale(.45) rotate(-25deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+
+.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15,23,42,.62); }
+.modal-backdrop.hidden { display: none; }
+.confirmation-modal { width: min(460px, 100%); background: var(--surface); border-radius: var(--radius); padding: 28px; box-shadow: 0 24px 60px rgba(0,0,0,.28); }
+.confirmation-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border-radius: 50%; background: var(--red-light); color: var(--red); font-family: var(--font-display); font-weight: 800; }
+.confirmation-modal h2 { margin: 0 0 9px; font-family: var(--font-display); font-size: 20px; color: var(--text-primary); }
+.confirmation-modal p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 9px; flex-wrap: wrap; margin-top: 22px; }
 .report-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .report-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); }
 .report-section-title { font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); letter-spacing: .8px; margin-bottom: 14px; }

@@ -955,6 +955,153 @@ function refreshReports() {
     }).join("");
 }
 
+function formatPersistedRecord(record) {
+    const prediction = record.prediction || "manual_review";
+    const meta = META[prediction] || META.manual_review;
+    const recordedAt = record.timestamp ? new Date(record.timestamp) : null;
+    return {
+        prediction,
+        classLabel: meta.label,
+        confidence: Number(record.confidence || 0),
+        time: recordedAt && !Number.isNaN(recordedAt.valueOf())
+            ? recordedAt.toLocaleTimeString("en-GB", { hour12: false })
+            : "-",
+        date: recordedAt && !Number.isNaN(recordedAt.valueOf())
+            ? recordedAt.toLocaleDateString("en-CA")
+            : "",
+        fileName: record.source_name || record.source || "-",
+        color: meta.color,
+        verdict: meta.verdict,
+        machineNumber: record.machine_number || 100,
+    };
+}
+
+function resetActiveDashboard() {
+    document.getElementById("evidenceLink").hidden = true;
+    document.getElementById("storedPreviewLink").hidden = true;
+    total = 0; defects = 0; ok = 0;
+    counts = { defected_wire: 0, ok_wire: 0 };
+    historyLog = [];
+    lastResult = null;
+    sessionStart = Date.now();
+    document.getElementById("totalCount").textContent = "0";
+    document.getElementById("defectCount").textContent = "0";
+    document.getElementById("okCount").textContent = "0";
+    document.getElementById("defectRate").textContent = "-";
+    renderHistory();
+    updateBarChart();
+    refreshReports();
+    setInspectionState("neutral");
+    document.getElementById("verdictLabel").textContent = "Live Review";
+    document.getElementById("verdictTitle").textContent = "Awaiting Capture";
+    document.getElementById("verdictSubtitle").textContent = "Align the wire in view, then capture for inspection.";
+    document.getElementById("scoreGood").textContent = "--%";
+    document.getElementById("scoreReview").textContent = "--%";
+    document.getElementById("scoreDefect").textContent = "--%";
+}
+
+async function loadPersistedActiveData() {
+    try {
+        const [statusResponse, historyResponse] = await Promise.all([
+            fetchWithTimeout(`${API_BASE}/reports/status`, {}, 8000),
+            fetchWithTimeout(`${API_BASE}/history?limit=500`, {}, 8000),
+        ]);
+        if (!statusResponse.ok) throw new Error(await readApiError(statusResponse));
+        if (!historyResponse.ok) throw new Error(await readApiError(historyResponse));
+        const status = await statusResponse.json();
+        const history = await historyResponse.json();
+        const active = status.active || {};
+        historyLog = (history.items || []).map(formatPersistedRecord);
+        total = Number(active.total || 0);
+        ok = Number(active.good || 0);
+        defects = Number(active.rejected || 0);
+        counts = { defected_wire: defects, ok_wire: ok };
+        const oldestVisible = historyLog[historyLog.length - 1];
+        if (oldestVisible?.date) sessionStart = new Date(`${oldestVisible.date}T${oldestVisible.time}`);
+        document.getElementById("totalCount").textContent = total;
+        document.getElementById("defectCount").textContent = defects;
+        document.getElementById("okCount").textContent = ok;
+        document.getElementById("defectRate").textContent = total ? `${((defects / total) * 100).toFixed(0)}%` : "-";
+        renderHistory();
+        updateBarChart();
+        refreshReports();
+    } catch (err) {
+        console.warn("Could not restore active inspection data:", err);
+    }
+}
+
+function setReportOperationStatus(kind, message, reportUrl = null) {
+    const status = document.getElementById("reportOperationStatus");
+    if (!status) return;
+    status.className = `report-operation-status is-${kind}`;
+    status.replaceChildren();
+    if (kind === "success") {
+        const tick = document.createElement("span");
+        tick.className = "report-status-tick";
+        tick.textContent = "✓";
+        status.append(tick);
+    }
+    const text = document.createElement("span");
+    text.textContent = message;
+    status.append(text);
+    if (reportUrl) {
+        const link = document.createElement("a");
+        link.href = reportUrl;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Open saved PDF";
+        status.append(link);
+    }
+}
+
+async function generateServerReport() {
+    const button = document.getElementById("generateReportButton");
+    if (button) button.disabled = true;
+    setReportOperationStatus("working", "Generating and saving the PDF report on this SurfaceAI station...");
+    try {
+        const response = await fetchWithTimeout(`${API_BASE}/reports/generate`, { method: "POST" }, 45000);
+        if (!response.ok) throw new Error(await readApiError(response));
+        const data = await response.json();
+        setReportOperationStatus("success", `Report saved successfully: ${data.filename} (${data.count} inspections).`, `${API_BASE}/reports/${encodeURIComponent(data.filename)}`);
+        return data;
+    } catch (err) {
+        setReportOperationStatus("error", `Report could not be generated: ${err.message || "API error"}`);
+        return null;
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+function openClearPastDataDialog() {
+    document.getElementById("clearPastDataModal")?.classList.remove("hidden");
+}
+
+function closeClearPastDataDialog() {
+    document.getElementById("clearPastDataModal")?.classList.add("hidden");
+}
+
+async function generateReportFromClearDialog() {
+    const data = await generateServerReport();
+    if (data) closeClearPastDataDialog();
+}
+
+async function confirmClearPastData() {
+    const button = document.getElementById("confirmClearPastDataButton");
+    if (button) button.disabled = true;
+    try {
+        const response = await fetchWithTimeout(`${API_BASE}/reports/clear-past-data`, { method: "POST" }, 20000);
+        if (!response.ok) throw new Error(await readApiError(response));
+        const data = await response.json();
+        closeClearPastDataDialog();
+        resetActiveDashboard();
+        setReportOperationStatus("success", `Past data cleared. ${data.cleared_count} inspections were saved in archive ${data.archive_name}.`);
+    } catch (err) {
+        setReportOperationStatus("error", `Past data could not be cleared: ${err.message || "API error"}`);
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 function exportCSV() {
     if (!historyLog.length) { alert("No data to export yet."); return; }
     const header = ["#", "Machine", "Class", "Confidence (%)", "File Name", "Time", "Verdict"];
@@ -1426,33 +1573,8 @@ document.getElementById("cfg-machineNumber")?.addEventListener("keydown", event 
 
 updateTuningFromControls();
 
-function clearSession() {
-    if (!confirm("Clear all session data? This cannot be undone.")) return;
-    document.getElementById("evidenceLink").hidden = true;
-    document.getElementById("storedPreviewLink").hidden = true;
-    total = 0; defects = 0; ok = 0;
-    counts = { defected_wire: 0, ok_wire: 0 };
-    historyLog   = [];
-    lastResult   = null;
-    sessionStart = Date.now();
-    document.getElementById("totalCount").textContent  = "0";
-    document.getElementById("defectCount").textContent = "0";
-    document.getElementById("okCount").textContent     = "0";
-    document.getElementById("defectRate").textContent  = "—";
-    document.getElementById("historyList").innerHTML   = '<div class="history-empty">No inspections yet</div>';
-    document.getElementById("logCount").textContent    = "0 entries";
-    document.getElementById("resultPanel").style.display = "none";
-    updateBarChart();
-    setInspectionState("neutral");
-    document.getElementById("verdictLabel").textContent = "Live Review";
-    document.getElementById("verdictTitle").textContent = "Awaiting Capture";
-    document.getElementById("verdictSubtitle").textContent = "Align the wire in view, then capture for inspection.";
-    document.getElementById("scoreGood").textContent = "--%";
-    document.getElementById("scoreReview").textContent = "--%";
-    document.getElementById("scoreDefect").textContent = "--%";
-}
-
 setInspectionState("neutral");
+loadPersistedActiveData();
 bindCaptureButton();
 pollHardwareButton();
 // 200 ms makes the on-screen shutter react quickly to a physical press while the

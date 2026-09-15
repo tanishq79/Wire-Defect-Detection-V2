@@ -245,6 +245,22 @@ Recent records can be checked from the API:
 curl http://127.0.0.1:8000/history
 ```
 
+### Manual report and archive workflow
+
+Every completed inspection is appended immediately to
+`inspection_data/active/pending_inspections.jsonl`. SurfaceAI reloads this
+active data after a restart, so the live counters do not reset after a normal
+application close or reboot.
+
+In **Reports**, select **Generate Report** to save a permanent PDF under
+`inspection_data/reports/`. The dashboard confirms success with the filename
+and a green check mark. This action does not clear active data.
+
+Select **Clear Past Data** only when the required PDF has been generated. The
+confirmation dialog saves the exact current JSONL data to
+`inspection_data/archives/` with a timestamped filename, then starts a new
+empty active-data file. Reports and archives are never removed automatically.
+
 ## 6. Updating On The Raspberry Pi
 
 If the changes are pushed to the GitHub repo:

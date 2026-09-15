@@ -203,7 +203,7 @@
                     <div class="conf-row"><span>Confidence</span><strong id="confidenceText">--</strong></div>
                     <div class="confidence-bar"><div id="confidenceFill"></div></div>
                     <p class="action-note" id="actionText"></p>
-                    <button class="drawer-btn" onclick="exportSinglePDF()">Download PDF</button>
+                    <button class="drawer-btn" onclick="generateServerReport()">Generate Saved Report</button>
                     <div class="result-badge" id="resultBadge">--</div>
                     <div class="result-action" id="resultAction">--</div>
                 </div>
@@ -255,23 +255,20 @@
                     </div>
                     <div>
                         <h2 class="report-hero-title">Wire Inspection Report</h2>
-                        <p class="report-hero-sub">Live session snapshot. Export as CSV, PDF, or print for records.</p>
+                        <p class="report-hero-sub">Active inspection data is stored locally and remains available after restart.</p>
                     </div>
                     <div class="report-actions">
-                        <button class="btn-outline" onclick="exportCSV()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Export CSV
-                        </button>
-                        <button class="btn-outline" onclick="exportSessionPDF()">
+                        <button class="btn-outline" id="generateReportButton" onclick="generateServerReport()">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            Export PDF
+                            Generate Report
                         </button>
-                        <button class="btn-outline" onclick="window.print()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                            Print
+                        <button class="btn-danger" id="clearPastDataButton" onclick="openClearPastDataDialog()">
+                            Clear Past Data
                         </button>
                     </div>
                 </div>
+
+                <div class="report-operation-status" id="reportOperationStatus" role="status" aria-live="polite"></div>
 
                 <div class="report-grid">
                     <div class="report-section">
@@ -390,10 +387,10 @@
                         <p class="settings-hint" id="cfg-machineStatus">The next inspection will be recorded against this machine.</p>
                     </div>
                     <div class="settings-row">
-                        <label class="settings-label">Clear Session Data</label>
+                        <label class="settings-label">Clear Past Inspection Data</label>
                         <div style="display:flex;gap:10px;align-items:center">
-                            <button class="btn-danger" onclick="clearSession()">Clear All Data</button>
-                            <span class="settings-hint" style="margin:0">Resets all counters, history and charts.</span>
+                            <button class="btn-danger" onclick="openClearPastDataDialog()">Clear Past Data</button>
+                            <span class="settings-hint" style="margin:0">Archives active data before starting a new empty report period.</span>
                         </div>
                     </div>
                 </div>
@@ -412,6 +409,19 @@
         </div>
 
     </main>
+</div>
+
+<div class="modal-backdrop hidden" id="clearPastDataModal" role="dialog" aria-modal="true" aria-labelledby="clearPastDataTitle">
+    <div class="confirmation-modal">
+        <div class="confirmation-icon">!</div>
+        <h2 id="clearPastDataTitle">Clear past inspection data?</h2>
+        <p>All active inspection data will be removed from the dashboard. A timestamped raw-data archive will be saved first. Make sure you have generated the required PDF report.</p>
+        <div class="confirmation-actions">
+            <button type="button" class="btn-outline" onclick="generateReportFromClearDialog()">Generate Report</button>
+            <button type="button" class="btn-outline" onclick="closeClearPastDataDialog()">Cancel</button>
+            <button type="button" class="btn-danger" id="confirmClearPastDataButton" onclick="confirmClearPastData()">Confirm Clear Data</button>
+        </div>
+    </div>
 </div>
 <script src="script.js"></script>
 </body>

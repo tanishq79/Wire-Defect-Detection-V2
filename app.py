@@ -37,7 +37,7 @@ import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, UnidentifiedImageError
 from image_storage import APP_DIR, IMAGE_SIZES, ImageStore, configured_path
 
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 DEFAULT_ALLOWED_ORIGINS = "http://127.0.0.1:8000,http://localhost:8000"
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -310,7 +310,12 @@ MACHINE_STATE_FILE = INSPECTION_DIR / "machine_state.json"
 MACHINE_BUTTONS_ENABLED = os.getenv("WIRE_MACHINE_BUTTONS_ENABLED", "0").strip().lower() not in {"0", "false", "no", "off"}
 MACHINE_PLUS_BUTTON_PIN = int(os.getenv("WIRE_MACHINE_PLUS_GPIO", "14"))
 MACHINE_MINUS_BUTTON_PIN = int(os.getenv("WIRE_MACHINE_MINUS_GPIO", "15"))
-LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
+ACTIVE_DATA_DIR = INSPECTION_DIR / "active"
+REPORTS_DIR = INSPECTION_DIR / "reports"
+ARCHIVES_DIR = INSPECTION_DIR / "archives"
+LEGACY_LOG_FILE = INSPECTION_DIR / "inspection_log.jsonl"
+LOG_FILE = ACTIVE_DATA_DIR / "pending_inspections.jsonl"
+INSPECTION_LOG_LOCK = threading.RLock()
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 if (APP_DIR / "frontend").exists():
@@ -439,8 +444,56 @@ def warm_up_model():
 MODEL_WARMUP_ERROR = warm_up_model()
 
 
-def log_inspection(result: dict, source: str, source_name: Optional[str] = None):
+def ensure_inspection_storage() -> None:
+    """Create durable report folders and adopt pre-report JSONL data once."""
     INSPECTION_DIR.mkdir(parents=True, exist_ok=True)
+    ACTIVE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    ARCHIVES_DIR.mkdir(parents=True, exist_ok=True)
+    if LEGACY_LOG_FILE.exists() and not LOG_FILE.exists():
+        os.replace(LEGACY_LOG_FILE, LOG_FILE)
+
+
+def _read_inspection_records_unlocked() -> list[dict]:
+    if not LOG_FILE.exists():
+        return []
+    records = []
+    with LOG_FILE.open("r", encoding="utf-8") as log:
+        for line in log:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                # A power interruption can leave an incomplete final line. All
+                # earlier complete JSONL records remain readable.
+                continue
+    return records
+
+
+def read_inspection_records() -> list[dict]:
+    ensure_inspection_storage()
+    with INSPECTION_LOG_LOCK:
+        return _read_inspection_records_unlocked()
+
+
+def inspection_summary(records: list[dict]) -> dict:
+    total = len(records)
+    good = sum(record.get("prediction") == "ok_wire" for record in records)
+    rejected = total - good
+    confidence_values = [float(record["confidence"]) for record in records if isinstance(record.get("confidence"), (int, float))]
+    return {
+        "total": total,
+        "good": good,
+        "rejected": rejected,
+        "defect_rate": round((rejected / total * 100), 1) if total else 0,
+        "average_confidence": round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else 0,
+    }
+
+
+def log_inspection(result: dict, source: str, source_name: Optional[str] = None):
+    ensure_inspection_storage()
     record = {
         "id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -453,27 +506,168 @@ def log_inspection(result: dict, source: str, source_name: Optional[str] = None)
         "processing": result.get("processing", {}),
         "images": result.get("images", {}),
     }
-    with LOG_FILE.open("a", encoding="utf-8") as log:
-        log.write(json.dumps(record) + "\n")
+    # One fsynced JSON object per line makes completed inspections survive an
+    # application restart or ordinary power interruption.
+    with INSPECTION_LOG_LOCK, LOG_FILE.open("a", encoding="utf-8") as log:
+        log.write(json.dumps(record, separators=(",", ":")) + "\n")
+        log.flush()
+        os.fsync(log.fileno())
     return record
 
 
 def read_recent_inspections(limit: int = 50):
-    if not LOG_FILE.exists():
-        return []
-
-    records = []
-    with LOG_FILE.open("r", encoding="utf-8") as log:
-        for line in log:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-
+    records = read_inspection_records()
     return records[-limit:][::-1]
+
+
+def _safe_report_timestamp() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def _record_time(record: dict) -> str:
+    timestamp = record.get("timestamp")
+    if not timestamp:
+        return "-"
+    try:
+        return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return str(timestamp)
+
+
+def create_saved_report() -> dict:
+    """Render the active inspection data to a permanent local PDF report."""
+    ensure_inspection_storage()
+    records = read_inspection_records()
+    if not records:
+        raise HTTPException(status_code=409, detail="There is no active inspection data to report")
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="PDF reporting is unavailable because reportlab is not installed") from exc
+
+    timestamp = _safe_report_timestamp()
+    filename = f"Wire_Report_{timestamp}_{uuid.uuid4().hex[:8]}.pdf"
+    report_path = REPORTS_DIR / filename
+    temporary_path = REPORTS_DIR / f".{filename}.tmp"
+    summary = inspection_summary(records)
+    page_width, page_height = landscape(A4)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, textColor=colors.HexColor("#FFFFFF"), alignment=TA_LEFT)
+    small_style = ParagraphStyle("ReportSmall", parent=styles["BodyText"], fontName="Helvetica", fontSize=7, leading=9, textColor=colors.HexColor("#374151"))
+    cell_style = ParagraphStyle("ReportCell", parent=small_style, fontSize=7, leading=8)
+    header_style = ParagraphStyle("ReportHeader", parent=small_style, fontName="Helvetica-Bold", textColor=colors.HexColor("#FFFFFF"))
+
+    def page_footer(canvas, document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#6B7280"))
+        canvas.drawString(14 * mm, 9 * mm, "SurfaceAI Wire Inspection System")
+        canvas.drawRightString(page_width - 14 * mm, 9 * mm, f"Page {document.page}")
+        canvas.restoreState()
+
+    story = []
+    header = Table([[Paragraph("WIRE INSPECTION REPORT", title_style)]], colWidths=[page_width - 28 * mm])
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1A56DB")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+    ]))
+    story.extend([header, Spacer(1, 7 * mm)])
+    story.append(Paragraph(f"Generated: {_record_time({'timestamp': datetime.now(timezone.utc).isoformat()})} &nbsp;&nbsp;|&nbsp;&nbsp; Records: {summary['total']}", small_style))
+    story.append(Spacer(1, 4 * mm))
+    summary_rows = [
+        ["Total inspected", str(summary["total"]), "Good wires", str(summary["good"]), "Rejected / review", str(summary["rejected"])],
+        ["Defect rate", f"{summary['defect_rate']:.1f}%", "Average confidence", f"{summary['average_confidence']:.1f}%", "Active data", "Archived manually after report"],
+    ]
+    summary_table = Table(summary_rows, colWidths=[31 * mm, 26 * mm, 31 * mm, 26 * mm, 35 * mm, 55 * mm])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D1D5DB")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111827")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTNAME", (4, 0), (4, -1), "Helvetica-Bold"),
+    ]))
+    story.extend([summary_table, Spacer(1, 7 * mm), Paragraph("INSPECTION LOG", ParagraphStyle("SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11, textColor=colors.HexColor("#111827"))), Spacer(1, 3 * mm)])
+    table_rows = [[Paragraph(value, header_style) for value in ("#", "Time", "Machine", "Result", "Confidence", "Source")]]
+    labels = {"ok_wire": "Good Wire", "defected_wire": "Defective Wire", "manual_review": "Manual Review"}
+    for index, record in enumerate(records, start=1):
+        source_name = str(record.get("source_name") or record.get("source") or "-")
+        table_rows.append([
+            Paragraph(str(index), cell_style),
+            Paragraph(_record_time(record), cell_style),
+            Paragraph(str(record.get("machine_number", "-")), cell_style),
+            Paragraph(labels.get(record.get("prediction"), str(record.get("prediction", "Unknown"))), cell_style),
+            Paragraph(f"{float(record.get('confidence', 0)):.1f}%", cell_style),
+            Paragraph(source_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), cell_style),
+        ])
+    log_table = Table(table_rows, colWidths=[10 * mm, 37 * mm, 20 * mm, 37 * mm, 25 * mm, page_width - 28 * mm - 129 * mm], repeatRows=1)
+    log_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D1D5DB")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(log_table)
+    document = SimpleDocTemplate(str(temporary_path), pagesize=landscape(A4), leftMargin=14 * mm, rightMargin=14 * mm, topMargin=13 * mm, bottomMargin=16 * mm, title="SurfaceAI Wire Inspection Report")
+    try:
+        document.build(story, onFirstPage=page_footer, onLaterPages=page_footer)
+        os.replace(temporary_path, report_path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink(missing_ok=True)
+    return {"filename": filename, "path": str(report_path), "count": summary["total"], "summary": summary}
+
+
+def archive_and_clear_active_data() -> dict:
+    """Archive active JSONL first, then atomically begin a fresh empty log."""
+    ensure_inspection_storage()
+    with INSPECTION_LOG_LOCK:
+        raw_data = LOG_FILE.read_bytes() if LOG_FILE.exists() else b""
+        records = _read_inspection_records_unlocked()
+        if not records:
+            raise HTTPException(status_code=409, detail="There is no active inspection data to clear")
+        timestamp = _safe_report_timestamp()
+        archive_name = f"Archive_{timestamp}_{uuid.uuid4().hex[:8]}.jsonl"
+        archive_path = ARCHIVES_DIR / archive_name
+        archive_temp_path = None
+        active_temp_path = None
+        with tempfile.NamedTemporaryFile("wb", dir=ARCHIVES_DIR, prefix=".archive-", suffix=".tmp", delete=False) as archive_file:
+            archive_file.write(raw_data)
+            archive_file.flush()
+            os.fsync(archive_file.fileno())
+            archive_temp_path = Path(archive_file.name)
+        try:
+            os.replace(archive_temp_path, archive_path)
+            with tempfile.NamedTemporaryFile("wb", dir=ACTIVE_DATA_DIR, prefix=".pending-", suffix=".tmp", delete=False) as active_file:
+                active_file.flush()
+                os.fsync(active_file.fileno())
+                active_temp_path = Path(active_file.name)
+            os.replace(active_temp_path, LOG_FILE)
+        finally:
+            if archive_temp_path and archive_temp_path.exists():
+                archive_temp_path.unlink(missing_ok=True)
+            if active_temp_path and active_temp_path.exists():
+                active_temp_path.unlink(missing_ok=True)
+    return {"archive_name": archive_name, "archive_path": str(archive_path), "cleared_count": len(records)}
 
 
 def open_image_from_bytes(contents: bytes) -> Image.Image:
@@ -1334,6 +1528,39 @@ async def camera_stop():
 async def history(limit: int = 50):
     limit = max(1, min(limit, 500))
     return {"items": read_recent_inspections(limit), "limit": limit}
+
+
+@app.get("/reports/status")
+async def report_status():
+    ensure_inspection_storage()
+    records = read_inspection_records()
+    return {
+        "active": inspection_summary(records),
+        "active_log": str(LOG_FILE),
+        "reports_dir": str(REPORTS_DIR),
+        "archives_dir": str(ARCHIVES_DIR),
+    }
+
+
+@app.post("/reports/generate")
+async def generate_report():
+    return await run_in_threadpool(create_saved_report)
+
+
+@app.post("/reports/clear-past-data")
+async def clear_past_data():
+    return await run_in_threadpool(archive_and_clear_active_data)
+
+
+@app.get("/reports/{filename}")
+async def open_saved_report(filename: str):
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=404, detail="Report not found")
+    report_path = REPORTS_DIR / safe_name
+    if not report_path.is_file():
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(report_path, media_type="application/pdf", filename=safe_name, content_disposition_type="inline")
 
 
 @app.get("/images/{resolution}/{filename}")

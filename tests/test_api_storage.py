@@ -236,11 +236,43 @@ def test_status_ui_history_and_routes(api):
     assert ui_response.headers["cache-control"].startswith("no-store")
     assert client.get("/api").status_code == 200
     assert client.get("/camera/status").json()["available"] is True
-    module.INSPECTION_DIR.mkdir()
+    module.INSPECTION_DIR.mkdir(exist_ok=True)
+    module.LOG_FILE.parent.mkdir(exist_ok=True)
     old = {"id": "old-record", "source": "upload", "source_name": "old.jpg", "confidence": 90}
     module.LOG_FILE.write_text(json.dumps(old) + "\ninvalid line\n")
     assert client.get("/history").json()["items"] == [old]
     assert client.get("/history?limit=0").json()["limit"] == 1
     assert client.get("/history?limit=900").json()["limit"] == 500
     routes = client.get("/openapi.json").json()["paths"]
-    assert {"/predict", "/predict-path", "/capture", "/camera/stream", "/camera/stop", "/hardware-button/status", "/motor/status", "/machine", "/machine/increment", "/machine/decrement", "/machine/{number}", "/history"} <= routes.keys()
+    assert {"/predict", "/predict-path", "/capture", "/camera/stream", "/camera/stop", "/hardware-button/status", "/motor/status", "/machine", "/machine/increment", "/machine/decrement", "/machine/{number}", "/history", "/reports/status", "/reports/generate", "/reports/clear-past-data", "/reports/{filename}"} <= routes.keys()
+
+
+def test_report_generation_and_manual_archive(api):
+    module, client, _ = api
+    module.log_inspection(
+        {"prediction": "ok_wire", "confidence": 98.5, "raw_score": 0.985, "machine_number": 100},
+        "camera",
+        "good_capture.jpg",
+    )
+    module.log_inspection(
+        {"prediction": "defected_wire", "confidence": 91.0, "raw_score": 0.09, "machine_number": 200},
+        "camera",
+        "defect_capture.jpg",
+    )
+    status = client.get("/reports/status").json()
+    assert status["active"]["total"] == 2
+    report = client.post("/reports/generate")
+    assert report.status_code == 200, report.text
+    payload = report.json()
+    assert payload["count"] == 2
+    assert (module.REPORTS_DIR / payload["filename"]).is_file()
+    opened = client.get(f"/reports/{payload['filename']}")
+    assert opened.status_code == 200
+    assert opened.content.startswith(b"%PDF")
+    cleared = client.post("/reports/clear-past-data")
+    assert cleared.status_code == 200, cleared.text
+    archive = cleared.json()
+    assert archive["cleared_count"] == 2
+    assert (module.ARCHIVES_DIR / archive["archive_name"]).is_file()
+    assert module.LOG_FILE.read_text(encoding="utf-8") == ""
+    assert client.get("/reports/status").json()["active"]["total"] == 0
