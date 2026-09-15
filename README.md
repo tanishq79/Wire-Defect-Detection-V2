@@ -101,6 +101,8 @@ The system leverages Transfer Learning with MobileNetV2 to achieve high classifi
 - Real-time confidence score prediction
 - Confusion Matrix and Classification Report generation
 - Optimized for industrial wire quality inspection
+- Persistent active inspection history across application restarts and reboots
+- Server-saved PDF reports with manual timestamped archive-and-clear workflow
 
 ---
 
@@ -395,6 +397,42 @@ background: GPIO5 is UP, GPIO25 is DOWN, and the HAT uses GPIO4/GPIO18/GPIO24
 for ENABLE/STEP/DIR. See [Raspberry Pi setup](RASPBERRY_PI_SETUP.md) for wiring,
 the GPIO4 overlay conflict, safety cutoff, and configuration.
 
+### Persistent inspection data and saved reports
+
+SurfaceAI stores every completed inspection immediately in an append-only JSONL
+file. This active data is reloaded when the application starts, so the dashboard
+totals and history do not reset after a normal application close, restart, or
+Raspberry Pi reboot.
+
+```text
+inspection_data/
+  active/pending_inspections.jsonl  Current unreported inspection data
+  reports/                          Permanent generated PDF reports
+  archives/                         Timestamped raw-data archives after clearing
+```
+
+Use the **Reports** page to manage this workflow manually:
+
+1. Select **Generate Report** to create and save a PDF in `inspection_data/reports/`.
+   The PDF stays on the application computer; it is not placed in the browser's
+   Downloads folder. A green animated check mark confirms success and provides an
+   optional link to open the saved PDF.
+2. Select **Clear Past Data** when the report is complete. The confirmation dialog
+   offers **Generate Report**, **Cancel**, and **Confirm Clear Data**.
+3. On confirmation, SurfaceAI saves an exact timestamped copy of the current data
+   under `inspection_data/archives/`, then begins a new empty active-data file.
+
+Reports and archives are never deleted automatically. Operators control when to
+create a report and when to clear active data.
+
+### Stopping the kiosk application
+
+In the full-screen Raspberry Pi interface, the red power icon on the main
+right-hand action rail, or **Settings → Application → Stop Application**, stops
+SurfaceAI cleanly. It releases the camera, GPIO pins, and TCP port 8000, then
+closes the kiosk browser. The configured desktop auto-start launches SurfaceAI
+again after the next reboot.
+
 Start the FastAPI server:
 
 ```bash
@@ -422,6 +460,19 @@ GET /status
 ```http
 GET /motor/status
 ```
+
+### Active report data
+
+```http
+GET /reports/status
+POST /reports/generate
+POST /reports/clear-past-data
+GET /reports/{filename}
+```
+
+`POST /reports/generate` saves a PDF on the station. `POST
+/reports/clear-past-data` saves a timestamped raw-data archive before clearing
+the active inspection data.
 
 ### Predict Wire Condition
 
@@ -454,6 +505,7 @@ POST /predict
 - Uvicorn
 - NumPy
 - Pillow
+- ReportLab (server-side PDF report generation)
 - Scikit-learn
 - HTML
 - CSS
